@@ -112,39 +112,24 @@ void loop()
   if(converted_val < baseline + CAP_TOUCH)
   {
     analogWrite(vibPin1,0);
-    Serial.print("Capacitance is ");
-    Serial.print(converted_val);
-    Serial.print(", pwm is 0\n");
     //No Touch
   }
  
   else if (converted_val <= baseline + CAP_TOUCH + 0.05) 
   {
     analogWrite(vibPin1,80);
-    Serial.print("Capacitance is ");
-    Serial.print(converted_val);
-    Serial.print(", pwm is 80\n");
     //Touch
   }
   else if (converted_val <= baseline + CAP_TOUCH + 0.1)
   {
     analogWrite(vibPin1,110);
-    Serial.print("Capacitance is ");
-    Serial.print(converted_val);
-    Serial.print(", pwm is 110\n");
     //Pressure
   }
   else
   {
     analogWrite(vibPin1,255);
-    Serial.print("Capacitance is ");
-    Serial.print(converted_val);
-    Serial.print(", pwm is 255\n");
     //Excessive Pressure
   }
-
-
-  analogWrite(vibPin1, pwm);
 
 }
 
