@@ -11,7 +11,7 @@
 
 #define PWM_HIGH 255
 #define PWM_LOW 0
-#define CAP_RANGE 0.7
+#define CAP_RANGE 0.2
 #define CAP_TOUCH 0.05
 
 
@@ -79,13 +79,13 @@ void loop()
 	
 	converted_val = ((converted_val / 16777215) * 8.192) - 4.096; // converted val is capacitance value 
 
-	Serial.print(converted_val, 4);
-	Serial.print("\n");
+//	Serial.print(converted_val, 4);
+//	Serial.print("\n");
 
 	delay(15);								//Need a delay here or data will be transmitted out of order (or not at all)
 
   //map capacitance to pwm (make the lowest possible vibration pwm 80): 
-//  pwm = map(converted_val, baseline + CAP_TOUCH , baseline + CAP_TOUCH + CAP_RANGE, 0, 255);
+//  pwm = map(converted_val, baseline + CAP_TOUCH , baseline + CAP_TOUCH + CAP_RANGE, 80, 255);
 //
 //  if(converted_val < baseline + CAP_TOUCH) { //if converted_val is smaller than what we consider a touch...
 //      pwm = 0; //make the pwm zero
@@ -94,47 +94,59 @@ void loop()
 //      pwm = 255; //make the pwm 100
 //    }
 
-// I tried making my own "parabolic map" function but it required me to solve a set of non-linear equations that 
-// don't stay constant as the baseline cap value is always changing (so the a/b values in y = a(x-b)^2 were always changing too,
-// and arduino can't solve nonlinear equations easily)
-
 // so I'll try to square the analog values first, then use the map function (map the square of the read values): 
 
-//map capacitance to pwm (make the lowest possible vibration pwm 80): 
-  pwm = map(pow(converted_val,0.2), pow(baseline + CAP_TOUCH,0.2), pow(baseline + CAP_TOUCH + CAP_RANGE,0.2), 0, 255);
+////map capacitance to pwm (make the lowest possible vibration pwm 80): 
+//  pwm = map(converted_val, baseline + CAP_TOUCH, baseline + CAP_TOUCH + CAP_RANGE, 0, 255);
+//
+//  if(converted_val < baseline + CAP_TOUCH) { //if converted_val is smaller than what we consider a touch...
+//      pwm = 0; //make the pwm zero
+//    }
+//    else if(converted_val > baseline + CAP_TOUCH + CAP_RANGE, 0, 255) { //if converted_val is over the "highest pressure"... 
+//      pwm = 255; //make the pwm 100
+//    }
 
-  if(converted_val < baseline + CAP_TOUCH) { //if converted_val is smaller than what we consider a touch...
-      pwm = 0; //make the pwm zero
-    }
-    else if(converted_val > baseline + CAP_TOUCH + CAP_RANGE, 0, 255) { //if converted_val is over the "highest pressure"... 
-      pwm = 255; //make the pwm 100
-    }
+/*
+ * 3 stationary vibration regions for now:
+ */
+  if(converted_val < baseline + CAP_TOUCH)
+  {
+    analogWrite(vibPin1,0);
+    Serial.print("Capacitance is ");
+    Serial.print(converted_val);
+    Serial.print(", pwm is 0\n");
+    //No Touch
+  }
+ 
+  else if (converted_val <= baseline + CAP_TOUCH + 0.05) 
+  {
+    analogWrite(vibPin1,80);
+    Serial.print("Capacitance is ");
+    Serial.print(converted_val);
+    Serial.print(", pwm is 80\n");
+    //Touch
+  }
+  else if (converted_val <= baseline + CAP_TOUCH + 0.1)
+  {
+    analogWrite(vibPin1,110);
+    Serial.print("Capacitance is ");
+    Serial.print(converted_val);
+    Serial.print(", pwm is 110\n");
+    //Pressure
+  }
+  else
+  {
+    analogWrite(vibPin1,255);
+    Serial.print("Capacitance is ");
+    Serial.print(converted_val);
+    Serial.print(", pwm is 255\n");
+    //Excessive Pressure
+  }
+
 
   analogWrite(vibPin1, pwm);
 
-  //if (converted_val>=0.9 && converted_val<=0.95) 
-  //{
-  //    analogWrite(vibPin1,80);
-  //    //Touch
-  //}
-  //else if (converted_val>0.95 && converted_val<=1.5)
-  //    {
-  //    analogWrite(vibPin1,110);
-  //    //Pressure
-  //}
-  //else if (converted_val>1.5)
-  //{
-  //    analogWrite(vibPin1,255);
-  //    //Excessive Pressure
-  //}
-  //    else 
-  // {
-  //    analogWrite(vibPin1,0);
-  //}
-  //  
-
 }
-
 
 /* ______READ VALUE FUNCTION______
  * This function checks the sensor's status reg until the data is ready and then reads it in
