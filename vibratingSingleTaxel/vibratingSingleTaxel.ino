@@ -11,7 +11,7 @@
 
 #define PWM_HIGH 255
 #define PWM_LOW 0
-#define CAP_RANGE 0.2
+#define CAP_RANGE 0.8
 #define CAP_TOUCH 0.05
 
 
