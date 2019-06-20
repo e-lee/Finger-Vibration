@@ -1,3 +1,8 @@
+/*
+   - add something that recalibrates after high pressures
+
+*/
+
 #include <Wire.h>
 
 #define I2C_ADDRESS  0x48 					// 0x90 shift one to the right
@@ -12,7 +17,8 @@
 #define PWM_HIGH 255
 #define PWM_LOW 0
 #define CAP_RANGE 0.8
-#define CAP_TOUCH 0.05
+//#define CAP_TOUCH 0.05
+#define NUM_READINGS 100
 
 
 long CDC_val = 0;							// Unconverted value from CDC
@@ -23,6 +29,8 @@ const int vibPin2 = 4;
 
 float baseline = 0;
 int pwm = 0;
+float baselineMinMax[3];
+float CAP_TOUCH = 0; 
 
 /* ______FUNCTION TO INITIALIZE ARDUINO______ */
 void setup()
@@ -55,8 +63,10 @@ void setup()
   pinMode(vibPin1, OUTPUT);
   pinMode(vibPin2, OUTPUT);
 
-  baseline = findBaseline(); //find baseline cap value
+  findStartVals();
   Serial.println(baseline);
+
+  CAP_TOUCH = baselineMinMax[2] - baselineMinMax[1];
 }
 
 
@@ -79,71 +89,23 @@ void loop()
 
   converted_val = ((converted_val / 16777215) * 8.192) - 4.096; // converted val is capacitance value
 
-  	Serial.print(converted_val, 4);
-  	Serial.print("\n");
+//  Serial.print(converted_val, 4);
+//  Serial.print("\n");
 
   delay(15);								//Need a delay here or data will be transmitted out of order (or not at all)
 
   //  map capacitance to pwm (make the lowest possible vibration pwm 80):
+  pwm = myMap(converted_val, baseline + CAP_TOUCH , baseline + CAP_TOUCH + CAP_RANGE, 80, 255);
 
-//if (converted_val < 1) {
-//   Serial.println("pwm is under 1");
-//}
-//
-//else {
-    pwm = myMap(converted_val, baseline + CAP_TOUCH , baseline + CAP_TOUCH + CAP_RANGE, 80, 255);
-  
-    if (converted_val < baseline + CAP_TOUCH) { //if converted_val is smaller than what we consider a touch...
-      pwm = 0; //make the pwm zero
-//      Serial.println(converted_val);
-    }
-    else if (converted_val > baseline + CAP_TOUCH + CAP_RANGE) { //if converted_val is over the "highest pressure"...
-      pwm = 255; //make the pwm 100
-    }
-//}
-  analogWrite(vibPin1, pwm);
+  if (converted_val < baseline + CAP_TOUCH) { //if converted_val is smaller than what we consider a touch...
+    pwm = 0; //make the pwm zero
+  }
+  else if (converted_val > baseline + CAP_TOUCH + CAP_RANGE) { //if converted_val is over the "highest pressure"...
+    pwm = 255; //make the pwm 100
+  }
 
-//  if (converted_val < 1)
-//    Serial.print("pwm is under 1");
-//  else
-//    Serial.println(pwm);
-
-  // so I'll try to square the analog values first, then use the map function (map the square of the read values):
-
-  ////map capacitance to pwm (make the lowest possible vibration pwm 80):
-  //  pwm = map(converted_val, baseline + CAP_TOUCH, baseline + CAP_TOUCH + CAP_RANGE, 0, 255);
-  //
-  //  if(converted_val < baseline + CAP_TOUCH) { //if converted_val is smaller than what we consider a touch...
-  //      pwm = 0; //make the pwm zero
-  //    }
-  //    else if(converted_val > baseline + CAP_TOUCH + CAP_RANGE, 0, 255) { //if converted_val is over the "highest pressure"...
-  //      pwm = 255; //make the pwm 100
-  //    }
-
-  ///*
-  // * 3 stationary vibration regions for now:
-  // */
-  //  if(converted_val < baseline + CAP_TOUCH)
-  //  {
-  //    analogWrite(vibPin1,0);
-  //    //No Touch
-  //  }
-  //
-  //  else if (converted_val <= baseline + CAP_TOUCH + 0.05)
-  //  {
-  //    analogWrite(vibPin1,80);
-  //    //Touch
-  //  }
-  //  else if (converted_val <= baseline + CAP_TOUCH + 0.1)
-  //  {
-  //    analogWrite(vibPin1,110);
-  //    //Pressure
-  //  }
-  //  else
-  //  {
-  //    analogWrite(vibPin1,255);
-  //    //Excessive Pressure
-  //  }
+  analogWrite(vibPin1, pwm); // write the new pwm to the pin
+  Serial.println(pwm);
 
 }
 
@@ -169,31 +131,67 @@ long readValue()
 }
 
 /*
-   baseline capacitance finding function
+   min/max/baseline capacitance finding function
 */
 
-float findBaseline()
+void findStartVals()
 {
-  float baselineVals[100];
-  float baseline = 0;
+  float baselineVals[NUM_READINGS];
+  float average = 0;
+  float minVal;
+  float maxVal;
 
-  // ** find baseline capacitance value by reading first 100 values (but omit first 10 values, are sometimes negative values):
+  // find baseline capacitance value by reading first 100 values (but omit first 10 values, are sometimes negative values):
   for (int i = 0; i < 10; i++) {
     readValue(); //make sure this line actually executes
   }
 
-  for (int i = 0; i < 100; i++) {
+
+  for (int i = 0; i < NUM_READINGS; i++) {
     baselineVals[i] = (((float)readValue() / 16777215) * 8.192) - 4.096;  // Read in capacitance value, cast as float (from long)
+//    Serial.println(baselineVals[i]);
   }
 
-  // **average values in array to find "baseline" cap value
-  for (int i = 0; i < 100; i++) {
-    baseline = baseline + baselineVals[i];
+  minVal = baselineVals[0];
+  maxVal = baselineVals[0];
+  
+  // average values in array to find "baseline" cap value
+  for (int i = 0; i < NUM_READINGS; i++) {
+    average = average + baselineVals[i];
+
+    // check whether current value bigger than previous maxVal
+    if ((baselineVals[i] > maxVal) && (baselineVals[i] > 0)) {
+      maxVal = baselineVals[i];
+    }
+
+    // check whether current value bigger than previous minVal
+    if ((baselineVals[i] < minVal) && (baselineVals[i] > 0)) {
+      minVal = baselineVals[i];
+    }
+
   }
 
-  return baseline / 100; //return
+  baselineMinMax[0] = average/NUM_READINGS; // put baseline value into array
+  baselineMinMax[1] = minVal;  // put minVal into array
+  baselineMinMax[2] = maxVal; // put maxVal into array
+
+  baseline = baselineMinMax[0]; // can assign baseline directly because it's a global variable... 
+
+//    Serial.println("average, baseline, Min, Max:");
+//    Serial.println(average);
+//    Serial.println(baseline);
+//    Serial.println(minVal);
+//    Serial.println(maxVal);
+//    
+    
+    
+  //find max value in the first 100 readings:
+
 }
 
+/*
+   maps a number x from the range [in_min to in_max] and maps it into the range [out_min, out_max]
+*/
 int myMap(float x, float in_min, float in_max, float out_min, float out_max)
 {
   return (int)((x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min);
