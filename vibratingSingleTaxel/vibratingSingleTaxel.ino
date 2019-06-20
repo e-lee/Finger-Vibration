@@ -1,6 +1,11 @@
 /*
-   - add something that recalibrates after high pressures
+   - add something that recalibrates after high pressures ?
+   - arduino pins can only sink max 40mA 
+   - digital write high is 5V
 
+   - if a pin is set to an input (default), then internal pullup resistor is activated (desirable for reading inputs, as 
+   - do some kind of hard pressure test to see how much the displacement (capacitance) changes at rest to help with recalibration
+   
 */
 
 #include <Wire.h>
@@ -24,17 +29,30 @@
 long CDC_val = 0;							// Unconverted value from CDC
 float converted_val = 0; 					// Converted pF value
 
+// declare pin names 
 const int vibPin1 = 9; // make a #define?
-const int vibPin2 = 4;
+const int LEDPower = 5;
+const int LEDGnd = 4; 
 
-float baseline = 0;
+// declare global variables shared by main/ISR 
+volatile float baseline = 0;
+volatile float CAP_TOUCH; 
+
 int pwm = 0;
-float baselineMinMax[3];
-float CAP_TOUCH = 0; 
+
 
 /* ______FUNCTION TO INITIALIZE ARDUINO______ */
 void setup()
 {
+  // ** set pin modes
+  pinMode(vibPin1, OUTPUT);
+  pinMode(LEDPower, OUTPUT);
+  pinMode(LEDGnd, OUTPUT);
+
+  digitalWrite(LEDGnd, LOW); //always keep this low 
+  
+  digitalWrite(LEDPower, HIGH); //signal the start of calibration
+
   Wire.begin();							// Set up I2C for operation
 
   Serial.begin(9600);						// Set up baud rate for serial communication to com port
@@ -60,13 +78,10 @@ void setup()
   //		_BV(0) = sets operation to continuous convertion (set at highest speed)
   writeRegister(REGISTER_CONFIGURATION, _BV(0));
 
-  pinMode(vibPin1, OUTPUT);
-  pinMode(vibPin2, OUTPUT);
-
+  // ** find the baseline (avg), and CAP_TOUCH (min/max) of the first NUM_READINGS readings
   findStartVals();
-  Serial.println(baseline);
 
-  CAP_TOUCH = baselineMinMax[2] - baselineMinMax[1];
+  digitalWrite(LEDPower, LOW); //signal the end of calibration
 }
 
 
@@ -98,10 +113,10 @@ void loop()
   pwm = myMap(converted_val, baseline + CAP_TOUCH , baseline + CAP_TOUCH + CAP_RANGE, 80, 255);
 
   if (converted_val < baseline + CAP_TOUCH) { //if converted_val is smaller than what we consider a touch...
-    pwm = 0; //make the pwm zero
+    pwm = 0; //make the pwm zero percent on 
   }
   else if (converted_val > baseline + CAP_TOUCH + CAP_RANGE) { //if converted_val is over the "highest pressure"...
-    pwm = 255; //make the pwm 100
+    pwm = 255; //make the pwm 100 percent on 
   }
 
   analogWrite(vibPin1, pwm); // write the new pwm to the pin
@@ -146,12 +161,16 @@ void findStartVals()
     readValue(); //make sure this line actually executes
   }
 
+  //wait half a second:
+  delay(500);
+
 
   for (int i = 0; i < NUM_READINGS; i++) {
     baselineVals[i] = (((float)readValue() / 16777215) * 8.192) - 4.096;  // Read in capacitance value, cast as float (from long)
 //    Serial.println(baselineVals[i]);
   }
 
+  // initialize minVal and maxVal
   minVal = baselineVals[0];
   maxVal = baselineVals[0];
   
@@ -171,22 +190,15 @@ void findStartVals()
 
   }
 
-  baselineMinMax[0] = average/NUM_READINGS; // put baseline value into array
-  baselineMinMax[1] = minVal;  // put minVal into array
-  baselineMinMax[2] = maxVal; // put maxVal into array
+  baseline = average/NUM_READINGS; // put baseline value into array
+  CAP_TOUCH = (maxVal - minVal)/2; // calculate "average" error 
 
-  baseline = baselineMinMax[0]; // can assign baseline directly because it's a global variable... 
-
-//    Serial.println("average, baseline, Min, Max:");
-//    Serial.println(average);
-//    Serial.println(baseline);
-//    Serial.println(minVal);
-//    Serial.println(maxVal);
-//    
+    Serial.println("average, baseline, Min, Max:");
+    Serial.println(average);
+    Serial.println(baseline);
+    Serial.println(minVal);
+    Serial.println(maxVal);
     
-    
-  //find max value in the first 100 readings:
-
 }
 
 /*
