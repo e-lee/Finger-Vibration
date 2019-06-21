@@ -33,6 +33,9 @@ float converted_val = 0; 					// Converted pF value
 const int vibPin1 = 9; // make a #define?
 const int LEDPower = 5;
 const int LEDGnd = 4; 
+const int ButtonInterrupt = 3;
+const int ButtonPower = 7;
+const int ButtonGnd = 6;
 
 // declare global variables shared by main/ISR 
 volatile float baseline = 0;
@@ -44,12 +47,18 @@ int pwm = 0;
 /* ______FUNCTION TO INITIALIZE ARDUINO______ */
 void setup()
 {
-  // ** set pin modes
+  // ** Set pin modes
   pinMode(vibPin1, OUTPUT);
   pinMode(LEDPower, OUTPUT);
   pinMode(LEDGnd, OUTPUT);
+  pinMode(ButtonInterrupt, INPUT);
+  pinMode(ButtonPower, OUTPUT);
+  pinMode(ButtonGnd, OUTPUT);
 
-  digitalWrite(LEDGnd, LOW); //always keep this low 
+  // ** Initialize pin voltages:
+  digitalWrite(LEDGnd, LOW); 
+  digitalWrite(ButtonPower, HIGH);
+  digitalWrite(ButtonGnd, LOW);
   
   digitalWrite(LEDPower, HIGH); //signal the start of calibration
 
@@ -78,12 +87,14 @@ void setup()
   //		_BV(0) = sets operation to continuous convertion (set at highest speed)
   writeRegister(REGISTER_CONFIGURATION, _BV(0));
 
-  // ** find the baseline (avg), and CAP_TOUCH (min/max) of the first NUM_READINGS readings
+  // ** Find the baseline (avg), and CAP_TOUCH (min/max) of the first NUM_READINGS readings
   findStartVals();
+
+  //** Enable interrupt on pin 3
+  attachInterrupt(digitalPinToInterrupt(3), Button_ISR, RISING); // pin will go high to low when interrupt 
 
   digitalWrite(LEDPower, LOW); //signal the end of calibration
 }
-
 
 
 /* ______MAIN PROGRAM______ */
@@ -164,6 +175,7 @@ void findStartVals()
   //wait half a second:
   delay(500);
 
+  Serial.println("this line prints twice");
 
   for (int i = 0; i < NUM_READINGS; i++) {
     baselineVals[i] = (((float)readValue() / 16777215) * 8.192) - 4.096;  // Read in capacitance value, cast as float (from long)
@@ -198,7 +210,6 @@ void findStartVals()
     Serial.println(baseline);
     Serial.println(minVal);
     Serial.println(maxVal);
-    
 }
 
 /*
@@ -207,4 +218,12 @@ void findStartVals()
 int myMap(float x, float in_min, float in_max, float out_min, float out_max)
 {
   return (int)((x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min);
+}
+
+void Button_ISR() 
+{
+  digitalWrite(LEDPower, HIGH); // turn LED on to signal recalibration
+//  findStartVals();
+  Serial.println("interrupt is triggered");
+  digitalWrite(LEDPower, LOW); // turn LED off to signal end of recalibration
 }
