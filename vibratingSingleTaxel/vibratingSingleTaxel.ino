@@ -26,8 +26,7 @@
 #define NUM_READINGS 100
 
 
-long CDC_val = 0;							// Unconverted value from CDC
-float converted_val = 0; 					// Converted pF value
+float CDC_val = 0;							// CDC value
 
 // declare pin names 
 const int vibPin1 = 9; // make a #define?
@@ -72,7 +71,6 @@ void setup()
 
   delay(1);								// Wait a tad for reboot
 
-
   // **Cap Channel Excitation Setup**
   //		_BV(3) = enables EXCA pin as excitation output
   // 		_BV(1), BV(0) = set excitation voltage level
@@ -92,7 +90,7 @@ void setup()
   findStartVals();
 
   //** Enable interrupt on pin 3
-  attachInterrupt(digitalPinToInterrupt(3), Button_ISR, RISING); // pin will go high to low when interrupt 
+  attachInterrupt(digitalPinToInterrupt(3), Button_ISR, FALLING); // pin will go high to low when interrupt 
 
   digitalWrite(LEDPower, LOW); //signal the end of calibration
 }
@@ -102,8 +100,7 @@ void setup()
 void loop()
 {
 
-  CDC_val = readValue();					// Read in capacitance value
-  converted_val = CDC_val;				// Cast CDC_val as float
+  CDC_val = (float)readValue();					// Read in capacitance value
 
   // **Converts CDC value to capacitance (pF)**
   // CDC full-scale input range is +- 4.096 pF (|8.192| pF)
@@ -161,8 +158,6 @@ void findStartVals()
     readValue(); //make sure this line actually executes
   }
 
-  //wait half a second:
-  delay(500);
 
   for (int i = 0; i < NUM_READINGS; i++) {
     baselineVals[i] = (((float)readValue() / 16777215) * 8.192) - 4.096;  // Read in capacitance value, cast as float (from long)
