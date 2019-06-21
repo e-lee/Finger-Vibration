@@ -22,14 +22,13 @@
 #define PWM_HIGH 255
 #define PWM_LOW 0
 #define CAP_RANGE 0.8
-//#define CAP_TOUCH 0.05
 #define NUM_READINGS 100
 
 
 float CDC_val = 0;							// CDC value
 
 // declare pin names 
-const int vibPin1 = 9; // make a #define?
+const int vibPin1 = 3; 
 const int LEDPower = 5;
 const int LEDGnd = 4; 
 const int ButtonInterrupt = 3;
@@ -40,6 +39,7 @@ const int ButtonGnd = 6;
 float baseline = 0;
 float CAP_TOUCH = 0; 
 volatile boolean needRecalibrate = false;
+float converted_val = 0;
 
 int pwm = 0;
 
@@ -90,7 +90,7 @@ void setup()
   findStartVals();
 
   //** Enable interrupt on pin 3
-  attachInterrupt(digitalPinToInterrupt(3), Button_ISR, FALLING); // pin will go high to low when interrupt 
+  attachInterrupt(digitalPinToInterrupt(2), Button_ISR, FALLING); // pin will go high to low when interrupt 
 
   digitalWrite(LEDPower, LOW); //signal the end of calibration
 }
@@ -100,7 +100,7 @@ void setup()
 void loop()
 {
 
-  CDC_val = (float)readValue();					// Read in capacitance value
+  converted_val = (float)readValue();					// Read in capacitance value
 
   // **Converts CDC value to capacitance (pF)**
   // CDC full-scale input range is +- 4.096 pF (|8.192| pF)
@@ -142,8 +142,8 @@ void loop()
 }
 
 /*
-   min/max/baseline capacitance finding function
-*/
+ *  min/max/baseline capacitance finding function
+ */
 
 void findStartVals()
 {
@@ -201,6 +201,10 @@ int myMap(float x, float in_min, float in_max, float out_min, float out_max)
 {
   return (int)((x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min);
 }
+
+/*
+ * Function to handle the button interrupt
+ */
 
 void Button_ISR() 
 {
