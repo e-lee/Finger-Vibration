@@ -11,7 +11,7 @@
 #include <nRF24L01.h>
 #include <RF24.h>
 
-RF24 radio(13, 12); // CE, CSN
+RF24 radio(10, 9); // CE, CSN (CSN is 9, CE is 10)
 const byte address[6] = "00001";
 
 void setup() {
@@ -23,5 +23,5 @@ void setup() {
 void loop() {
   const char text[] = "Hello World";
   radio.write(&text, sizeof(text));
-  delay(1000);
+  delay(1);
 }
