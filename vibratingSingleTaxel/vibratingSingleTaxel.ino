@@ -37,9 +37,10 @@ const int ButtonInterrupt = 3;
 const int ButtonPower = 7;
 const int ButtonGnd = 6;
 
-// declare global variables shared by main/ISR 
-volatile float baseline = 0;
-volatile float CAP_TOUCH; 
+// declare global variables shared by setup/main
+float baseline = 0;
+float CAP_TOUCH = 0; 
+volatile boolean needRecalibrate = false;
 
 int pwm = 0;
 
@@ -133,26 +134,13 @@ void loop()
   analogWrite(vibPin1, pwm); // write the new pwm to the pin
   Serial.println(pwm);
 
-}
-
-/* ______READ VALUE FUNCTION______
-   This function checks the sensor's status reg until the data is ready and then reads it in
-*/
-long readValue()
-{
-  char status = 0;
-
-  // **Waits until conversion is complete**
-  //		_BV(0), _BV(2) = when either register is zero, indicates conversion is finished/new data is available
-  while (!(status & (_BV(2) | _BV(0))))
-  {
-    status = readRegister(REGISTER_STATUS); 	// Wait for the next conversion
+  //check if need to recalibrate: 
+  if(needRecalibrate == true) {
+    Serial.println("needRecalibrate is true");
+    findStartVals(); //call calibrating function
+    digitalWrite(LEDPower, LOW); // turn LED off to signal recalibration was finished
+    needRecalibrate = false;
   }
-
-  unsigned long value =  readLong(REGISTER_CAP_DATA);			//Size of unsigned long : 4 bytes (32bits)
-  value >>= 8; 		//We have read one byte too many - now we have to get rid of it - sensor is 24-bit
-
-  return value;
 
 }
 
@@ -162,6 +150,7 @@ long readValue()
 
 void findStartVals()
 {
+  
   float baselineVals[NUM_READINGS];
   float average = 0;
   float minVal;
@@ -174,8 +163,6 @@ void findStartVals()
 
   //wait half a second:
   delay(500);
-
-  Serial.println("this line prints twice");
 
   for (int i = 0; i < NUM_READINGS; i++) {
     baselineVals[i] = (((float)readValue() / 16777215) * 8.192) - 4.096;  // Read in capacitance value, cast as float (from long)
@@ -203,7 +190,7 @@ void findStartVals()
   }
 
   baseline = average/NUM_READINGS; // put baseline value into array
-  CAP_TOUCH = (maxVal - minVal)/2; // calculate "average" error 
+  CAP_TOUCH = (maxVal - minVal)/2 ; // calculate "average" error 
 
     Serial.println("average, baseline, Min, Max:");
     Serial.println(average);
@@ -223,7 +210,28 @@ int myMap(float x, float in_min, float in_max, float out_min, float out_max)
 void Button_ISR() 
 {
   digitalWrite(LEDPower, HIGH); // turn LED on to signal recalibration
-//  findStartVals();
   Serial.println("interrupt is triggered");
-  digitalWrite(LEDPower, LOW); // turn LED off to signal end of recalibration
+  needRecalibrate = true;
+  
+}
+
+/* ______READ VALUE FUNCTION______
+   This function checks the sensor's status reg until the data is ready and then reads it in
+*/
+long readValue()
+{
+  char status = 0;
+
+  // **Waits until conversion is complete**
+  //    _BV(0), _BV(2) = when either register is zero, indicates conversion is finished/new data is available
+  while (!(status & (_BV(2) | _BV(0))))
+  {
+    status = readRegister(REGISTER_STATUS);   // Wait for the next conversion
+  }
+
+  unsigned long value =  readLong(REGISTER_CAP_DATA);     //Size of unsigned long : 4 bytes (32bits)
+  value >>= 8;    //We have read one byte too many - now we have to get rid of it - sensor is 24-bit
+
+  return value;
+
 }
