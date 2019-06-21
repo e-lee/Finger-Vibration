@@ -36,6 +36,6 @@ void loop() {
     int pwm = 0;
     radio.read(&pwm, sizeof(pwm));
     Serial.println(pwm);
-//    analogWrite(vibratePower, pwm);
+    analogWrite(vibratePower, pwm);
   }
 }
