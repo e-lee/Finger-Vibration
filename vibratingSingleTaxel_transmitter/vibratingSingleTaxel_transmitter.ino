@@ -1,18 +1,20 @@
 
+
 /*
    - add something that recalibrates after high pressures ?
-   - arduino pins can only sink max 40mA 
+   - arduino pins can only sink max 40mA
    - digital write high is 5V
 
-   - if a pin is set to an input (default), then internal pullup resistor is activated (desirable for reading inputs, as 
+   - if a pin is set to an input (default), then internal pullup resistor is activated (desirable for reading inputs, as
    - do some kind of hard pressure test to see how much the displacement (capacitance) changes at rest to help with recalibration
-   
+
 */
 
 #include <SPI.h>
 #include <Wire.h>
 #include <nRF24L01.h>
 #include <RF24.h>
+#include <TimerOne.h>
 
 #define I2C_ADDRESS  0x48           // 0x90 shift one to the right
 #define REGISTER_STATUS 0x00
@@ -27,26 +29,28 @@
 #define PWM_LOW 0
 #define CAP_RANGE 0.8
 #define NUM_READINGS 100
+#define CAP_STATIONARY 0.1 // range of values cap can oscillate between to be "const"
 
 
 float CDC_val = 0;              // CDC value
 
-// declare pin names 
-const int vibPin1 = 3; 
+// declare pin names
 const int LEDPower = 5;
-const int LEDGnd = 4; 
+const int LEDGnd = 4;
 const int ButtonInterrupt = 3;
 const int ButtonPower = 7;
 const int ButtonGnd = 6;
 
-const int noice = 3;
-
 // declare global variables for finger vibration
 float baseline = 0;
-float CAP_TOUCH = 0; 
+float CAP_TOUCH = 0;
 float converted_val = 0;
 int pwm = 0;
+int lastPwm = 0;
+
+// declare global variables that may be changed through interrupts
 volatile boolean needRecalibrate = false;
+volatile int timerCount = 0;
 
 // declare global variables for rf transmission
 RF24 radio(10, 9); // CE, CSN (CSN is 9, CE is 10)
@@ -57,7 +61,6 @@ const byte address[6] = "00001";
 void setup()
 {
   // ** Set pin modes
-  pinMode(vibPin1, OUTPUT);
   pinMode(LEDPower, OUTPUT);
   pinMode(LEDGnd, OUTPUT);
   pinMode(ButtonInterrupt, INPUT);
@@ -65,10 +68,10 @@ void setup()
   pinMode(ButtonGnd, OUTPUT);
 
   // ** Initialize pin voltages:
-  digitalWrite(LEDGnd, LOW); 
+  digitalWrite(LEDGnd, LOW);
   digitalWrite(ButtonPower, HIGH);
   digitalWrite(ButtonGnd, LOW);
-  
+
   digitalWrite(LEDPower, HIGH); //signal the start of calibration
 
   Wire.begin();             // Set up I2C for operation
@@ -98,18 +101,21 @@ void setup()
   // ** Find the baseline (avg), and CAP_TOUCH (min/max) of the first NUM_READINGS readings
   findStartVals();
 
-  //** Enable interrupt on pin 3
-  attachInterrupt(digitalPinToInterrupt(2), Button_ISR, FALLING); // pin will go high to low when interrupt 
+  //** Enable interrupt on pin 2
+  attachInterrupt(digitalPinToInterrupt(2), Button_ISR, FALLING); // pin will go high to low when interrupt
 
+  // ** Enable timer interrupt
+  Timer1.initialize(100000); // set a timer of length 100000 microseconds (or 0.1 sec - or 10Hz => the led will blink 5 times, 5 cycles of on-and-off, per second)
+  Timer1.attachInterrupt(timerIsr); // attach the service routine here
 
   //**** set up rf transmission
   radio.begin();
   radio.openWritingPipe(address);
   radio.setPALevel(RF24_PA_MIN);
   radio.stopListening();
-  
+
   //signal the end of calibration
-  digitalWrite(LEDPower, LOW); 
+  digitalWrite(LEDPower, LOW);
 }
 
 
@@ -130,8 +136,7 @@ void loop()
 
   converted_val = ((converted_val / 16777215) * 8.192) - 4.096; // converted val is capacitance value
 
-//  Serial.print(converted_val, 4);
-//  Serial.print("\n");
+  Serial.println(converted_val, 4);
 
   delay(15);                //Need a delay here or data will be transmitted out of order (or not at all)
 
@@ -139,35 +144,80 @@ void loop()
   pwm = myMap(converted_val, baseline + CAP_TOUCH , baseline + CAP_TOUCH + CAP_RANGE, 80, 255);
 
   if (converted_val < baseline + CAP_TOUCH) { //if converted_val is smaller than what we consider a touch...
-    pwm = 0; //make the pwm zero percent on 
+    pwm = 0; //make the pwm zero percent on
   }
   else if (converted_val > baseline + CAP_TOUCH + CAP_RANGE) { //if converted_val is over the "highest pressure"...
-    pwm = 255; //make the pwm 100 percent on 
+    pwm = 255; //make the pwm 100 percent on
   }
 
-//  analogWrite(vibPin1, pwm); // write the new pwm to the pin
-//  Serial.println(pwm);
-
-  // transmit pwm to other microcontroller
-  radio.write(&pwm, sizeof(pwm));
-
-  //check if need to recalibrate: 
-  if(needRecalibrate == true) {
+  //check if need to recalibrate:
+  if (needRecalibrate == true) {
     Serial.println("needRecalibrate is true");
     findStartVals(); //call calibrating function
     digitalWrite(LEDPower, LOW); // turn LED off to signal recalibration was finished
     needRecalibrate = false;
   }
 
+  // ****"fadeaway" touch function
+
+  if (pwm > 0) { /* only enter this funct if a touch has been detected */
+    if (abs(pwm - lastpwm) < CAP_STATIONARY) { // ****** make "lastpwm" an average instead of a single value?
+      if (/*time not started*/) {
+        /*start time*/
+      }
+      else if (/*timer has finished counting 4s*/) {
+        /* start fadeaway */
+      }
+    }
+    else if (/*the timer has been started*/ && /*we are out of stationary range*/) {
+      /*stop counting*/
+      /*reset the timer*/
+    }
+    /*else, keep incrementing the timer, or keep the timer count at zero*/
+  }
+  else { /* either there is no touch, or we have faded away */
+    if (/*we have already faded pwm away*/) {
+      if (abs(pwm - lastpwm) > CAP_STATIONARY) { // if we are outside of what we consider a "constant touch"
+        /*revert to using regular pwm*/
+        /*reset timer count*/
+      }
+      /*else keep fadeaway*/
+    }
+    /*else there is no touch*/
+  }
+
+  //  transmit pwm to other microcontroller
+  Serial.println(pwm);
+  radio.write(&pwm, sizeof(pwm));
+
 }
 
 /*
- *  min/max/baseline capacitance finding function
+ * timerISR - goes off each time the timer overflows ? ! 
  */
+void timerIsr()
+{
+  if(timerCount == 0) {
+
+  }
+
+}
+
+/*
+   fadeaway funct - controls pwm output until it is zero
+*/
+
+/* if either pwm changes or recalibrate needed, break*/
+
+
+
+/*
+    min/max/baseline capacitance finding function
+*/
 
 void findStartVals()
 {
-  
+
   float baselineVals[NUM_READINGS];
   float average = 0;
   float minVal;
@@ -181,13 +231,13 @@ void findStartVals()
 
   for (int i = 0; i < NUM_READINGS; i++) {
     baselineVals[i] = (((float)readValue() / 16777215) * 8.192) - 4.096;  // Read in capacitance value, cast as float (from long)
-//    Serial.println(baselineVals[i]);
+    //    Serial.println(baselineVals[i]);
   }
 
   // initialize minVal and maxVal
   minVal = baselineVals[0];
   maxVal = baselineVals[0];
-  
+
   // average values in array to find "baseline" cap value
   for (int i = 0; i < NUM_READINGS; i++) {
     average = average + baselineVals[i];
@@ -204,14 +254,14 @@ void findStartVals()
 
   }
 
-  baseline = average/NUM_READINGS; // put baseline value into array
-  CAP_TOUCH = (maxVal - minVal)/2 ; // calculate "average" error 
+  baseline = average / NUM_READINGS; // put baseline value into array
+  CAP_TOUCH = (maxVal - minVal) / 1.5 ; // calculate "average" error
 
-    Serial.println("average, baseline, Min, Max:");
-    Serial.println(average);
-    Serial.println(baseline);
-    Serial.println(minVal);
-    Serial.println(maxVal);
+  Serial.println("average, baseline, Min, Max:");
+  Serial.println(average);
+  Serial.println(baseline);
+  Serial.println(minVal);
+  Serial.println(maxVal);
 }
 
 /*
@@ -223,15 +273,15 @@ int myMap(float x, float in_min, float in_max, float out_min, float out_max)
 }
 
 /*
- * Function to handle the button interrupt
- */
+   Function to handle the button interrupt
+*/
 
-void Button_ISR() 
+void Button_ISR()
 {
   digitalWrite(LEDPower, HIGH); // turn LED on to signal recalibration
   Serial.println("interrupt is triggered");
   needRecalibrate = true;
-  
+
 }
 
 /* ______READ VALUE FUNCTION______

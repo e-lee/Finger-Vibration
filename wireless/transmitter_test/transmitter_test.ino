@@ -1,4 +1,3 @@
-
 /*
 * Arduino Wireless Communication Tutorial
 *     Example 1 - Transmitter Code
@@ -11,17 +10,20 @@
 #include <nRF24L01.h>
 #include <RF24.h>
 
-RF24 radio(10, 9); // CE, CSN (CSN is 9, CE is 10)
-const byte address[6] = "00001";
+bool r;
 
+RF24 radio(10, 9); // CE, CSN
+const byte address[6] = "00001";
 void setup() {
+  Serial.begin(9600);
   radio.begin();
   radio.openWritingPipe(address);
   radio.setPALevel(RF24_PA_MIN);
   radio.stopListening();
 }
 void loop() {
-  const int number = 3;
-  radio.write(&number, sizeof(number));
-  delay(1);
+  const char text[] = "Hello World";
+  radio.write(&text, sizeof(text));
+  Serial.println(r);
+  delay(1000);
 }

@@ -113,7 +113,7 @@ void loop()
 
   converted_val = ((converted_val / 16777215) * 8.192) - 4.096; // converted val is capacitance value
 
-//  Serial.print(converted_val, 4);
+  Serial.println(converted_val, 4);
 //  Serial.print("\n");
 
   delay(15);								//Need a delay here or data will be transmitted out of order (or not at all)
@@ -129,7 +129,7 @@ void loop()
   }
 
   analogWrite(vibPin1, pwm); // write the new pwm to the pin
-  Serial.println(pwm);
+//  Serial.println(pwm);
 
   //check if need to recalibrate: 
   if(needRecalibrate == true) {
