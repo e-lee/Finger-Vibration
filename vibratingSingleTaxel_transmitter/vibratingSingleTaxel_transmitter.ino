@@ -29,17 +29,20 @@
 #define PWM_LOW 0
 #define CAP_RANGE 0.8
 #define NUM_READINGS 100
-#define CAP_STATIONARY 0.1 // range of values cap can oscillate between to be "const"
+#define CAP_STATIONARY 0.3 // range of values cap can oscillate between to be "const"
+#define NOT_STARTED -1
+#define STARTED 0
+#define FINISHED 1
 
 
 float CDC_val = 0;              // CDC value
 
 // declare pin names
 const int LEDPower = 5;
-const int LEDGnd = 4;
-const int ButtonInterrupt = 3;
+const int Gnd = 4;
+const int ButtonInterrupt = 2;
 const int ButtonPower = 7;
-const int ButtonGnd = 6;
+//const int ButtonGnd = 6;
 
 // declare global variables for finger vibration
 float baseline = 0;
@@ -47,6 +50,7 @@ float CAP_TOUCH = 0;
 float converted_val = 0;
 int pwm = 0;
 int lastPwm = 0;
+boolean faded = false;
 
 // declare global variables that may be changed through interrupts
 volatile boolean needRecalibrate = false;
@@ -62,15 +66,15 @@ void setup()
 {
   // ** Set pin modes
   pinMode(LEDPower, OUTPUT);
-  pinMode(LEDGnd, OUTPUT);
+  pinMode(Gnd, OUTPUT);
   pinMode(ButtonInterrupt, INPUT);
   pinMode(ButtonPower, OUTPUT);
-  pinMode(ButtonGnd, OUTPUT);
+  //  pinMode(ButtonGnd, OUTPUT);
 
   // ** Initialize pin voltages:
-  digitalWrite(LEDGnd, LOW);
+  //  digitalWrite(Gnd, LOW);
   digitalWrite(ButtonPower, HIGH);
-  digitalWrite(ButtonGnd, LOW);
+  //  digitalWrite(ButtonGnd, LOW);
 
   digitalWrite(LEDPower, HIGH); //signal the start of calibration
 
@@ -122,7 +126,44 @@ void setup()
 /* ______MAIN PROGRAM______ */
 void loop()
 {
+  readCapacitance(); // result is stored in global variable converted_val
+  Serial.println(converted_val, 4); // print new capacitance value to serial
 
+  lastPwm = pwm; // save last pwm
+  findpwm(); // find new pwm according to new converted_val
+
+  checkRecalibrate(); // check if need to recalibrate baseline (if button has been pressed)
+
+  //  transmit pwm to other microcontroller
+//  Serial.println(pwm);
+  radio.write(&pwm, sizeof(pwm));
+}
+
+void checkRecalibrate()
+{
+  if (needRecalibrate == true) {
+    Serial.println("needRecalibrate is true");
+    findStartVals(); //call calibrating function
+    digitalWrite(LEDPower, LOW); // turn LED off to signal recalibration was finished
+    needRecalibrate = false;
+  }
+}
+
+void findpwm()
+{
+  //  map capacitance to pwm (make the lowest possible vibration pwm 80):
+  pwm = myMap(converted_val, baseline + CAP_TOUCH , baseline + CAP_TOUCH + CAP_RANGE, 80, 255);
+
+  if (converted_val < baseline + CAP_TOUCH) { //if converted_val is smaller than what we consider a touch...
+    pwm = 0; //make the pwm zero percent on
+  }
+  else if (converted_val > baseline + CAP_TOUCH + CAP_RANGE) { //if converted_val is over the "highest pressure"...
+    pwm = 255; //make the pwm 100 percent on
+  }
+}
+
+void readCapacitance()
+{
   converted_val = (float)readValue();         // Read in capacitance value
 
   // **Converts CDC value to capacitance (pF)**
@@ -135,77 +176,83 @@ void loop()
   //    {y= (|8.192pF|/|16777215|)x -4.096pF}
 
   converted_val = ((converted_val / 16777215) * 8.192) - 4.096; // converted val is capacitance value
-
-  Serial.println(converted_val, 4);
-
   delay(15);                //Need a delay here or data will be transmitted out of order (or not at all)
 
-  //  map capacitance to pwm (make the lowest possible vibration pwm 80):
-  pwm = myMap(converted_val, baseline + CAP_TOUCH , baseline + CAP_TOUCH + CAP_RANGE, 80, 255);
+  // **don't need to return converted_val, it is a global variable
+}
 
-  if (converted_val < baseline + CAP_TOUCH) { //if converted_val is smaller than what we consider a touch...
-    pwm = 0; //make the pwm zero percent on
-  }
-  else if (converted_val > baseline + CAP_TOUCH + CAP_RANGE) { //if converted_val is over the "highest pressure"...
-    pwm = 255; //make the pwm 100 percent on
-  }
-
-  //check if need to recalibrate:
-  if (needRecalibrate == true) {
-    Serial.println("needRecalibrate is true");
-    findStartVals(); //call calibrating function
-    digitalWrite(LEDPower, LOW); // turn LED off to signal recalibration was finished
-    needRecalibrate = false;
-  }
-
-  // ****"fadeaway" touch function
-
-  if (pwm > 0) { /* only enter this funct if a touch has been detected */
-    if (abs(pwm - lastpwm) < CAP_STATIONARY) { // ****** make "lastpwm" an average instead of a single value?
-      if (/*time not started*/) {
-        /*start time*/
-      }
-      else if (/*timer has finished counting 4s*/) {
-        /* start fadeaway */
+void fadeaway()
+{
+  if ((pwm > 0) && (timerCount != FINISHED)) { /* only enter this part of the funct iff a touch has been detected AND timer is not finished counting */
+    if (abs(pwm - lastPwm) < CAP_STATIONARY) { // ****** make "lastpwm" an average instead of a single value?
+      if (timerCount == NOT_STARTED) { /*time not started*/
+        /* start time */
+        Timer1.restart(); //start time at the beginning of new period
+        timerCount = STARTED; //signal timer has been started but not finished counting
       }
     }
-    else if (/*the timer has been started*/ && /*we are out of stationary range*/) {
+    else if (timerCount == STARTED) { /*the timer has been started and we are out of stationary range*/
       /*stop counting*/
+      Timer1.stop();
       /*reset the timer*/
+      timerCount = NOT_STARTED; // internal timer count is reset when time is started again
     }
     /*else, keep incrementing the timer, or keep the timer count at zero*/
   }
-  else { /* either there is no touch, or we have faded away */
-    if (/*we have already faded pwm away*/) {
-      if (abs(pwm - lastpwm) > CAP_STATIONARY) { // if we are outside of what we consider a "constant touch"
-        /*revert to using regular pwm*/
+  else { /* either there is no touch, we have faded away, or we have finished counting and still need to fade */
+    if (faded == true) { /*we have already faded pwm away, so the pwm is zero*/
+      if (abs(pwm - lastPwm) > CAP_STATIONARY) { // if we are outside of what we consider a "constant touch"
+        //revert to using regular pwm:
         /*reset timer count*/
+        timerCount = NOT_STARTED;
+        /*revert to using regular pwm*/
+        faded = false;
       }
       /*else keep fadeaway*/
+    }
+    else if (timerCount == FINISHED) { /*timer has finished counting 4s (and we have not faded yet)*/
+      /* start fadeaway */
+      touchfade();
+      Serial.println("timer up");
     }
     /*else there is no touch*/
   }
 
-  //  transmit pwm to other microcontroller
-  Serial.println(pwm);
-  radio.write(&pwm, sizeof(pwm));
-
 }
 
 /*
- * timerISR - goes off each time the timer overflows ? ! 
- */
-void timerIsr()
+   timerISR - goes off each time the timer overflows ? !
+*/
+void timerIsr() // if timerISR gets triggered mistakenly, can add a variable count
 {
-  if(timerCount == 0) {
-
-  }
-
+  timerCount == FINISHED; //let the main program know the timer has gone off
 }
 
 /*
    fadeaway funct - controls pwm output until it is zero
 */
+int touchfade()
+{
+  int outputtedPwm = pwm;
+
+  while (1) {
+
+    readCapacitance();
+    findpwm(); // swap out the "stationary" cap pwm values for just cap vals?
+
+    if (abs(pwm - lastPwm) > CAP_STATIONARY) {
+      break; // if we are out of stationary range
+    }
+    else if(outputtedPwm == 0) {
+      faded = 1;
+      break;
+    }
+    else {// else we must be in range and outputtedPwm is positive (pwm will never be negative)
+      outputtedPwm -= 5;
+    }
+   
+  }
+}
 
 /* if either pwm changes or recalibrate needed, break*/
 
@@ -231,7 +278,7 @@ void findStartVals()
 
   for (int i = 0; i < NUM_READINGS; i++) {
     baselineVals[i] = (((float)readValue() / 16777215) * 8.192) - 4.096;  // Read in capacitance value, cast as float (from long)
-    //    Serial.println(baselineVals[i]);
+//    Serial.println(baselineVals[i]);
   }
 
   // initialize minVal and maxVal

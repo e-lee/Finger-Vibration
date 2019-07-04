@@ -31,7 +31,7 @@ float CDC_val = 0;							// CDC value
 const int vibPin1 = 3; 
 const int LEDPower = 5;
 const int LEDGnd = 4; 
-const int ButtonInterrupt = 3;
+const int ButtonInterrupt = 2;
 const int ButtonPower = 7;
 const int ButtonGnd = 6;
 
