@@ -49,8 +49,12 @@ float baseline = 0;
 float CAP_TOUCH = 0;
 float converted_val = 0;
 float old_converted_val = 0;
+
 int pwm = 0;
-int lastPwm = 0;
+//int lastPwm = 0;
+int cap_count = 0;
+int i = 0;
+
 boolean faded = false;
 
 // declare global variables that may be changed through interrupts
@@ -124,6 +128,9 @@ void setup()
 
   //signal the end of calibration
   digitalWrite(LEDPower, LOW);
+
+  // why is my timer interrupt triggering on its own??
+  timerCount = NOT_STARTED;
 }
 
 
@@ -133,6 +140,8 @@ void loop()
   old_converted_val = converted_val; // save the old converted_val 
   readCapacitance(); // result is stored in global variable converted_val
   
+  Serial.print(timerCount);
+  Serial.print(" ");
   Serial.println(converted_val, 4); // print new capacitance value to serial
   
   findpwm(); // find new pwm according to new converted_val
@@ -191,7 +200,6 @@ void fadeaway()
   if ((pwm > 0) && (timerCount != FINISHED)) { /* only enter this part of the funct iff a touch has been detected AND timer is not finished counting */
     if (abs(converted_val - old_converted_val) < CAP_STATIONARY) { // ****** make "lastpwm" an average instead of a single value?
       Serial.print("const touch detected ");
-      Serial.println(timerCount);
       if (timerCount == NOT_STARTED) { /*time not started*/
         /* start time */
         Timer1.restart(); //start time at the beginning of new period
@@ -204,8 +212,8 @@ void fadeaway()
       Timer1.stop();
       /*reset the timer*/
       timerCount = NOT_STARTED; // internal timer count is reset when time is started again
-      Serial.println("timer has stopped and reset");
     }
+    Serial.println("reaches end of else");
   }
   else { /* either there is no touch, we have faded away, or we have finished counting and still need to fade */
     if (faded == true) { /*we have already faded pwm away, so the pwm is zero*/
@@ -234,7 +242,8 @@ void fadeaway()
 */
 void timerIsr() // if timerISR gets triggered mistakenly, can add a variable count
 {
-  timerCount == FINISHED; //let the main program know the timer has gone off
+  Serial.println("timer finished");
+  timerCount = FINISHED; //let the main program know the timer has gone off
 }
 
 /*
