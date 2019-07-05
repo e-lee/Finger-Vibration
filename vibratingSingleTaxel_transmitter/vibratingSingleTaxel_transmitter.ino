@@ -38,23 +38,24 @@
 float CDC_val = 0;              // CDC value
 
 // declare pin names
-const int LEDPower = 5;
+const int LEDPower = 7;
 const int Gnd = 4;
 const int ButtonInterrupt = 2;
-const int ButtonPower = 7;
+const int ButtonPower = 5;
 //const int ButtonGnd = 6;
 
 // declare global variables for finger vibration
 float baseline = 0;
 float CAP_TOUCH = 0;
 float converted_val = 0;
+float old_converted_val = 0;
 int pwm = 0;
 int lastPwm = 0;
 boolean faded = false;
 
 // declare global variables that may be changed through interrupts
 volatile boolean needRecalibrate = false;
-volatile int timerCount = 0;
+volatile int timerCount = NOT_STARTED;
 
 // declare global variables for rf transmission
 RF24 radio(10, 9); // CE, CSN (CSN is 9, CE is 10)
@@ -106,17 +107,20 @@ void setup()
   findStartVals();
 
   //** Enable interrupt on pin 2
-  attachInterrupt(digitalPinToInterrupt(2), Button_ISR, FALLING); // pin will go high to low when interrupt
+//  attachInterrupt(digitalPinToInterrupt(2), Button_ISR, FALLING); // pin will go high to low when interrupt
 
   // ** Enable timer interrupt
-  Timer1.initialize(100000); // set a timer of length 100000 microseconds (or 0.1 sec - or 10Hz => the led will blink 5 times, 5 cycles of on-and-off, per second)
+  Timer1.initialize(4000000); // set a timer of length 4000000 microseconds (or 4 sec - or 0.25Hz)
   Timer1.attachInterrupt(timerIsr); // attach the service routine here
 
-  //**** set up rf transmission
-  radio.begin();
-  radio.openWritingPipe(address);
-  radio.setPALevel(RF24_PA_MIN);
-  radio.stopListening();
+  //  //**** set up rf transmission
+  //  radio.begin();
+  //  radio.openWritingPipe(address);
+  //  radio.setPALevel(RF24_PA_MIN);
+  //  radio.stopListening();
+
+  // initialize converted_val (so old_converted_val has a proper value in the first run of loop())
+  converted_val = baseline;
 
   //signal the end of calibration
   digitalWrite(LEDPower, LOW);
@@ -126,17 +130,18 @@ void setup()
 /* ______MAIN PROGRAM______ */
 void loop()
 {
+  old_converted_val = converted_val; // save the old converted_val 
   readCapacitance(); // result is stored in global variable converted_val
+  
   Serial.println(converted_val, 4); // print new capacitance value to serial
-
-  lastPwm = pwm; // save last pwm
+  
   findpwm(); // find new pwm according to new converted_val
-
   checkRecalibrate(); // check if need to recalibrate baseline (if button has been pressed)
+  fadeaway(); // check if need to fade
 
   //  transmit pwm to other microcontroller
-//  Serial.println(pwm);
-  radio.write(&pwm, sizeof(pwm));
+  //  Serial.println(pwm);
+  //  radio.write(&pwm, sizeof(pwm));
 }
 
 void checkRecalibrate()
@@ -184,11 +189,14 @@ void readCapacitance()
 void fadeaway()
 {
   if ((pwm > 0) && (timerCount != FINISHED)) { /* only enter this part of the funct iff a touch has been detected AND timer is not finished counting */
-    if (abs(pwm - lastPwm) < CAP_STATIONARY) { // ****** make "lastpwm" an average instead of a single value?
+    if (abs(converted_val - old_converted_val) < CAP_STATIONARY) { // ****** make "lastpwm" an average instead of a single value?
+      Serial.print("const touch detected ");
+      Serial.println(timerCount);
       if (timerCount == NOT_STARTED) { /*time not started*/
         /* start time */
         Timer1.restart(); //start time at the beginning of new period
         timerCount = STARTED; //signal timer has been started but not finished counting
+        Serial.println("timer started");
       }
     }
     else if (timerCount == STARTED) { /*the timer has been started and we are out of stationary range*/
@@ -196,24 +204,25 @@ void fadeaway()
       Timer1.stop();
       /*reset the timer*/
       timerCount = NOT_STARTED; // internal timer count is reset when time is started again
+      Serial.println("timer has stopped and reset");
     }
-    /*else, keep incrementing the timer, or keep the timer count at zero*/
   }
   else { /* either there is no touch, we have faded away, or we have finished counting and still need to fade */
     if (faded == true) { /*we have already faded pwm away, so the pwm is zero*/
-      if (abs(pwm - lastPwm) > CAP_STATIONARY) { // if we are outside of what we consider a "constant touch"
+      if (abs(converted_val - old_converted_val) > CAP_STATIONARY) { // if we are outside of what we consider a "constant touch"
         //revert to using regular pwm:
         /*reset timer count*/
         timerCount = NOT_STARTED;
         /*revert to using regular pwm*/
         faded = false;
+        Serial.println("breaking out of fade");
       }
       /*else keep fadeaway*/
     }
     else if (timerCount == FINISHED) { /*timer has finished counting 4s (and we have not faded yet)*/
       /* start fadeaway */
+      Serial.println("timer up, beginning to fade");
       touchfade();
-      Serial.println("timer up");
     }
     /*else there is no touch*/
   }
@@ -231,26 +240,23 @@ void timerIsr() // if timerISR gets triggered mistakenly, can add a variable cou
 /*
    fadeaway funct - controls pwm output until it is zero
 */
-int touchfade()
+int touchfade() // find a way to trigger recalibrate while in this function
 {
-  int outputtedPwm = pwm;
-
+  
   while (1) {
-
     readCapacitance();
-    findpwm(); // swap out the "stationary" cap pwm values for just cap vals?
-
-    if (abs(pwm - lastPwm) > CAP_STATIONARY) {
-      break; // if we are out of stationary range
+    
+    if ((abs(converted_val - old_converted_val) > CAP_STATIONARY) || needRecalibrate == true) {
+      break; // if we are out of stationary range or we need to recalibrate
     }
-    else if(outputtedPwm == 0) {
-      faded = 1;
+    else if (pwm == 0) {
+      faded = true;
       break;
     }
     else {// else we must be in range and outputtedPwm is positive (pwm will never be negative)
-      outputtedPwm -= 5;
+      pwm -= 5;
     }
-   
+
   }
 }
 
@@ -278,7 +284,7 @@ void findStartVals()
 
   for (int i = 0; i < NUM_READINGS; i++) {
     baselineVals[i] = (((float)readValue() / 16777215) * 8.192) - 4.096;  // Read in capacitance value, cast as float (from long)
-//    Serial.println(baselineVals[i]);
+    //    Serial.println(baselineVals[i]);
   }
 
   // initialize minVal and maxVal
