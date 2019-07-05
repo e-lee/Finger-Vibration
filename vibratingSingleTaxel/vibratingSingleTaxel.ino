@@ -90,7 +90,7 @@ void setup()
   findStartVals();
 
   //** Enable interrupt on pin 3
-  attachInterrupt(digitalPinToInterrupt(2), Button_ISR, FALLING); // pin will go high to low when interrupt 
+//  attachInterrupt(digitalPinToInterrupt(2), Button_ISR, FALLING); // pin will go high to low when interrupt 
 
   digitalWrite(LEDPower, LOW); //signal the end of calibration
 }

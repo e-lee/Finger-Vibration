@@ -1,3 +1,8 @@
+/*******************************
+ * MAKE SURE THAT IN "TimerOne.h" that TCNT1 = 1 (not TCNT1 = 0)
+ * otherwise, interrupt will trigger immediately after it is enabled/started
+ *******************************/
+
 
 
 /*
@@ -52,8 +57,6 @@ float old_converted_val = 0;
 
 int pwm = 0;
 //int lastPwm = 0;
-int cap_count = 0;
-int i = 0;
 
 boolean faded = false;
 
@@ -116,7 +119,8 @@ void setup()
   // ** Enable timer interrupt
   Timer1.initialize(4000000); // set a timer of length 4000000 microseconds (or 4 sec - or 0.25Hz)
   Timer1.attachInterrupt(timerIsr); // attach the service routine here
-
+  Timer1.stop();
+  
   //  //**** set up rf transmission
   //  radio.begin();
   //  radio.openWritingPipe(address);
@@ -208,12 +212,12 @@ void fadeaway()
       }
     }
     else if (timerCount == STARTED) { /*the timer has been started and we are out of stationary range*/
+      Serial.print("timer stopped ");
       /*stop counting*/
       Timer1.stop();
       /*reset the timer*/
       timerCount = NOT_STARTED; // internal timer count is reset when time is started again
     }
-    Serial.println("reaches end of else");
   }
   else { /* either there is no touch, we have faded away, or we have finished counting and still need to fade */
     if (faded == true) { /*we have already faded pwm away, so the pwm is zero*/
@@ -238,12 +242,13 @@ void fadeaway()
 }
 
 /*
-   timerISR - goes off each time the timer overflows ? !
+   timerISR - goes off each time the timer overflows 
 */
 void timerIsr() // if timerISR gets triggered mistakenly, can add a variable count
 {
   Serial.println("timer finished");
   timerCount = FINISHED; //let the main program know the timer has gone off
+  Timer1.stop(); // stop the timer from counting any further
 }
 
 /*
@@ -255,17 +260,22 @@ int touchfade() // find a way to trigger recalibrate while in this function
   while (1) {
     readCapacitance();
     
-    if ((abs(converted_val - old_converted_val) > CAP_STATIONARY) || needRecalibrate == true) {
+    if ((abs(converted_val - old_converted_val) > CAP_STATIONARY) || needRecalibrate == true) {      
+      timerCount = NOT_STARTED;
       break; // if we are out of stationary range or we need to recalibrate
     }
-    else if (pwm == 0) {
+    else if (pwm <= 0) {
       faded = true;
+      pwm = 0;
+      timerCount = NOT_STARTED;
       break;
     }
     else {// else we must be in range and outputtedPwm is positive (pwm will never be negative)
       pwm -= 5;
+      Serial.println(pwm);
     }
 
+    
   }
 }
 
@@ -317,7 +327,7 @@ void findStartVals()
   }
 
   baseline = average / NUM_READINGS; // put baseline value into array
-  CAP_TOUCH = (maxVal - minVal) / 1.5 ; // calculate "average" error
+  CAP_TOUCH = (maxVal - minVal) ; // calculate "average" error
 
   Serial.println("average, baseline, Min, Max:");
   Serial.println(average);
