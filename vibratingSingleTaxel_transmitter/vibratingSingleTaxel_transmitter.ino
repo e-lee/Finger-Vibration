@@ -48,6 +48,7 @@ const int Gnd = 4;
 const int ButtonInterrupt = 2;
 const int ButtonPower = 5;
 const int ButtonGnd = 6;
+const int vibpin1 = 9; 
 
 // declare global variables for finger vibration
 float baseline = 0;
@@ -155,6 +156,9 @@ void loop()
   //  transmit pwm to other microcontroller
   //  Serial.println(pwm);
   //  radio.write(&pwm, sizeof(pwm));
+
+  analogWrite(vibpin1, pwm);
+  
 }
 
 void checkRecalibrate()
@@ -218,7 +222,6 @@ void fadeaway()
       /*reset the timer*/
       timerCount = NOT_STARTED; // internal timer count is reset when time is started again
     }
-    Serial.println("past else if");
   }
   else { /* either there is no touch, we have faded away, or we have finished counting and still need to fade */
 //    Serial.println(" help");
@@ -232,6 +235,7 @@ void fadeaway()
         Serial.println("breaking out of fade");
       }
       /*else keep fadeaway*/
+      pwm = 0;
     }
     else if (timerCount == STARTED) { /*the timer has been started and we are out of stationary range*/
       Serial.print("timer stopped ");
@@ -281,6 +285,9 @@ int touchfade() // find a way to trigger recalibrate while in this function
     }
     else {// else we must be in range and outputtedPwm is positive (pwm will never be negative)
       pwm -= 2;
+      
+    // ** either transmit the pwm here or make it the new pwm 
+      analogWrite(vibpin1, pwm);
       Serial.println(pwm);
     }
 
