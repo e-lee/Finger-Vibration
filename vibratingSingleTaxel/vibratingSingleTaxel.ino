@@ -1,11 +1,11 @@
 /*
    - add something that recalibrates after high pressures ?
-   - arduino pins can only sink max 40mA 
+   - arduino pins can only sink max 40mA
    - digital write high is 5V
 
-   - if a pin is set to an input (default), then internal pullup resistor is activated (desirable for reading inputs, as 
+   - if a pin is set to an input (default), then internal pullup resistor is activated (desirable for reading inputs, as
    - do some kind of hard pressure test to see how much the displacement (capacitance) changes at rest to help with recalibration
-   
+
 */
 
 #include <Wire.h>
@@ -21,23 +21,23 @@
 
 #define PWM_HIGH 255
 #define PWM_LOW 0
-#define CAP_RANGE 0.8
+#define CAP_RANGE 1.5
 #define NUM_READINGS 100
 
 
 float CDC_val = 0;							// CDC value
 
-// declare pin names 
-const int vibPin1 = 3; 
+// declare pin names
+const int vibPin1 = 9; // ******** changed from transmitter code
 const int LEDPower = 5;
-const int LEDGnd = 4; 
+const int LEDGnd = 4;
 const int ButtonInterrupt = 2;
 const int ButtonPower = 7;
 const int ButtonGnd = 6;
 
 // declare global variables shared by setup/main
 float baseline = 0;
-float CAP_TOUCH = 0; 
+float CAP_TOUCH = 0;
 volatile boolean needRecalibrate = false;
 float converted_val = 0;
 
@@ -56,10 +56,10 @@ void setup()
   pinMode(ButtonGnd, OUTPUT);
 
   // ** Initialize pin voltages:
-  digitalWrite(LEDGnd, LOW); 
+  digitalWrite(LEDGnd, LOW);
   digitalWrite(ButtonPower, HIGH);
   digitalWrite(ButtonGnd, LOW);
-  
+
   digitalWrite(LEDPower, HIGH); //signal the start of calibration
 
   Wire.begin();							// Set up I2C for operation
@@ -90,7 +90,7 @@ void setup()
   findStartVals();
 
   //** Enable interrupt on pin 3
-//  attachInterrupt(digitalPinToInterrupt(2), Button_ISR, FALLING); // pin will go high to low when interrupt 
+  //  attachInterrupt(digitalPinToInterrupt(2), Button_ISR, FALLING); // pin will go high to low when interrupt
 
   digitalWrite(LEDPower, LOW); //signal the end of calibration
 }
@@ -113,26 +113,51 @@ void loop()
 
   converted_val = ((converted_val / 16777215) * 8.192) - 4.096; // converted val is capacitance value
 
-  Serial.println(converted_val, 4);
-//  Serial.print("\n");
-
   delay(15);								//Need a delay here or data will be transmitted out of order (or not at all)
 
-  //  map capacitance to pwm (make the lowest possible vibration pwm 80):
-  pwm = myMap(converted_val, baseline + CAP_TOUCH , baseline + CAP_TOUCH + CAP_RANGE, 80, 255);
 
-  if (converted_val < baseline + CAP_TOUCH) { //if converted_val is smaller than what we consider a touch...
-    pwm = 0; //make the pwm zero percent on 
+  /* linear pwm mapping */
+  //  //  map capacitance to pwm (make the lowest possible vibration pwm 80):
+  //  pwm = myMap(converted_val, baseline + CAP_TOUCH , baseline + CAP_TOUCH + CAP_RANGE, 80, 255);
+  //
+  //  if (converted_val < baseline + CAP_TOUCH) { //if converted_val is smaller than what we consider a touch...
+  //    pwm = 0; //make the pwm zero percent on
+  //  }
+  //  else if (converted_val > baseline + CAP_TOUCH + CAP_RANGE) { //if converted_val is over the "highest pressure"...
+  //    pwm = 255; //make the pwm 100 percent on
+  //  }
+
+  /* segmented vibration mapping */
+  if (converted_val < baseline + CAP_TOUCH)
+  {
+    pwm = 0;
+    //No Touch
   }
-  else if (converted_val > baseline + CAP_TOUCH + CAP_RANGE) { //if converted_val is over the "highest pressure"...
-    pwm = 255; //make the pwm 100 percent on 
+
+  else if (converted_val <= baseline + CAP_TOUCH + 0.3)
+  {
+    pwm = 80;
+    //Touch
   }
+  else if (converted_val <= baseline + CAP_TOUCH + 0.6)
+  {
+    pwm = 130;
+    //Pressure
+  }
+  else
+  {
+    pwm = 255;
+    //Excessive Pressure
+  }
+  /* */
 
-  analogWrite(vibPin1, pwm); // write the new pwm to the pin
-//  Serial.println(pwm);
+  // write the new pwm to the pin
+  analogWrite(vibPin1, pwm); // write the pwm to the pin
+  Serial.println(pwm);
+  // Serial.print(converted_val, 4);
 
-  //check if need to recalibrate: 
-  if(needRecalibrate == true) {
+  //check if need to recalibrate:
+  if (needRecalibrate == true) {
     Serial.println("needRecalibrate is true");
     findStartVals(); //call calibrating function
     digitalWrite(LEDPower, LOW); // turn LED off to signal recalibration was finished
@@ -142,12 +167,12 @@ void loop()
 }
 
 /*
- *  min/max/baseline capacitance finding function
- */
+    min/max/baseline capacitance finding function
+*/
 
 void findStartVals()
 {
-  
+
   float baselineVals[NUM_READINGS];
   float average = 0;
   float minVal;
@@ -161,13 +186,13 @@ void findStartVals()
 
   for (int i = 0; i < NUM_READINGS; i++) {
     baselineVals[i] = (((float)readValue() / 16777215) * 8.192) - 4.096;  // Read in capacitance value, cast as float (from long)
-//    Serial.println(baselineVals[i]);
+    //    Serial.println(baselineVals[i]);
   }
 
   // initialize minVal and maxVal
   minVal = baselineVals[0];
   maxVal = baselineVals[0];
-  
+
   // average values in array to find "baseline" cap value
   for (int i = 0; i < NUM_READINGS; i++) {
     average = average + baselineVals[i];
@@ -184,14 +209,14 @@ void findStartVals()
 
   }
 
-  baseline = average/NUM_READINGS; // put baseline value into array
-  CAP_TOUCH = (maxVal - minVal)/2 ; // calculate "average" error 
+  baseline = average / NUM_READINGS; // put baseline value into array
+  CAP_TOUCH = (maxVal - minVal) / 2 ; // calculate "average" error
 
-    Serial.println("average, baseline, Min, Max:");
-    Serial.println(average);
-    Serial.println(baseline);
-    Serial.println(minVal);
-    Serial.println(maxVal);
+  Serial.println("average, baseline, Min, Max:");
+  Serial.println(average);
+  Serial.println(baseline);
+  Serial.println(minVal);
+  Serial.println(maxVal);
 }
 
 /*
@@ -203,15 +228,15 @@ int myMap(float x, float in_min, float in_max, float out_min, float out_max)
 }
 
 /*
- * Function to handle the button interrupt
- */
+   Function to handle the button interrupt
+*/
 
-void Button_ISR() 
+void Button_ISR()
 {
   digitalWrite(LEDPower, HIGH); // turn LED on to signal recalibration
   Serial.println("interrupt is triggered");
   needRecalibrate = true;
-  
+
 }
 
 /* ______READ VALUE FUNCTION______
@@ -234,3 +259,34 @@ long readValue()
   return value;
 
 }
+
+/*
+   possible patient tests
+   - figure out where to put vibration
+   - watch line of sight (how often looking at hand?)
+   - blindfold test/egg test ?
+   - squish foam block
+   - holding cups (styrofoam, juice boxes...)
+   - picking something out of bucket
+   - talk to them !
+   - ask most common objects picked up
+   - cognitive load
+   - handshake test
+   - timed tests w/ 2 trials with or without
+   - once w/ and w/o sensor, another w/ and w/o sensor without looking
+   - vibration + mechanical ? !
+   - on/off
+   - stick with validated questions (questions that give reliable answers -- do not ask pre/post q's)
+   - desired sensor position -- pick from a group
+   - 1. pilot technology to fine-tune test ?
+   - research am-ula
+   - box and blocks test (brittany is familiar with this one.)
+   - clothespin placement test
+   - 9 hole peg test ????
+
+   - get survey out
+   - make everythign smaller
+   - actually put it on a hand w/o the grey thing
+   - correct vibration
+   -
+*/

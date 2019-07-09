@@ -1,6 +1,6 @@
 /*******************************
- * MAKE SURE THAT IN "TimerOne.h" that TCNT1 = 1 (not TCNT1 = 0)
- * otherwise, interrupt will trigger immediately after it is enabled/started
+   MAKE SURE THAT IN "TimerOne.h" that TCNT1 = 1 (not TCNT1 = 0)
+   otherwise, interrupt will trigger immediately after it is enabled/started
  *******************************/
 
 
@@ -34,7 +34,7 @@
 #define PWM_LOW 0
 #define CAP_RANGE 0.8
 #define NUM_READINGS 100
-#define CAP_STATIONARY 0.3 // range of values cap can oscillate between to be "const"
+#define CAP_STATIONARY 0.1 // range of values cap can oscillate between to be "const"
 #define NOT_STARTED -1
 #define STARTED 0
 #define FINISHED 1
@@ -47,7 +47,7 @@ const int LEDPower = 7;
 const int Gnd = 4;
 const int ButtonInterrupt = 2;
 const int ButtonPower = 5;
-//const int ButtonGnd = 6;
+const int ButtonGnd = 6;
 
 // declare global variables for finger vibration
 float baseline = 0;
@@ -114,13 +114,13 @@ void setup()
   findStartVals();
 
   //** Enable interrupt on pin 2
-//  attachInterrupt(digitalPinToInterrupt(2), Button_ISR, FALLING); // pin will go high to low when interrupt
+  //  attachInterrupt(digitalPinToInterrupt(2), Button_ISR, FALLING); // pin will go high to low when interrupt
 
   // ** Enable timer interrupt
   Timer1.initialize(4000000); // set a timer of length 4000000 microseconds (or 4 sec - or 0.25Hz)
   Timer1.attachInterrupt(timerIsr); // attach the service routine here
   Timer1.stop();
-  
+
   //  //**** set up rf transmission
   //  radio.begin();
   //  radio.openWritingPipe(address);
@@ -141,13 +141,13 @@ void setup()
 /* ______MAIN PROGRAM______ */
 void loop()
 {
-  old_converted_val = converted_val; // save the old converted_val 
+  old_converted_val = converted_val; // save the old converted_val
   readCapacitance(); // result is stored in global variable converted_val
-  
+
   Serial.print(timerCount);
   Serial.print(" ");
   Serial.println(converted_val, 4); // print new capacitance value to serial
-  
+
   findpwm(); // find new pwm according to new converted_val
   checkRecalibrate(); // check if need to recalibrate baseline (if button has been pressed)
   fadeaway(); // check if need to fade
@@ -201,7 +201,7 @@ void readCapacitance()
 
 void fadeaway()
 {
-  if ((pwm > 0) && (timerCount != FINISHED)) { /* only enter this part of the funct iff a touch has been detected AND timer is not finished counting */
+  if ((faded == false) && (timerCount != FINISHED) && (pwm > 0)) { /* only enter this part of the funct iff a real touch has been detected AND timer is not finished counting */
     if (abs(converted_val - old_converted_val) < CAP_STATIONARY) { // ****** make "lastpwm" an average instead of a single value?
       Serial.print("const touch detected ");
       if (timerCount == NOT_STARTED) { /*time not started*/
@@ -218,8 +218,10 @@ void fadeaway()
       /*reset the timer*/
       timerCount = NOT_STARTED; // internal timer count is reset when time is started again
     }
+    Serial.println("past else if");
   }
   else { /* either there is no touch, we have faded away, or we have finished counting and still need to fade */
+//    Serial.println(" help");
     if (faded == true) { /*we have already faded pwm away, so the pwm is zero*/
       if (abs(converted_val - old_converted_val) > CAP_STATIONARY) { // if we are outside of what we consider a "constant touch"
         //revert to using regular pwm:
@@ -230,6 +232,13 @@ void fadeaway()
         Serial.println("breaking out of fade");
       }
       /*else keep fadeaway*/
+    }
+    else if (timerCount == STARTED) { /*the timer has been started and we are out of stationary range*/
+      Serial.print("timer stopped ");
+      /*stop counting*/
+      Timer1.stop();
+      /*reset the timer*/
+      timerCount = NOT_STARTED; // internal timer count is reset when time is started again
     }
     else if (timerCount == FINISHED) { /*timer has finished counting 4s (and we have not faded yet)*/
       /* start fadeaway */
@@ -242,7 +251,7 @@ void fadeaway()
 }
 
 /*
-   timerISR - goes off each time the timer overflows 
+   timerISR - goes off each time the timer overflows
 */
 void timerIsr() // if timerISR gets triggered mistakenly, can add a variable count
 {
@@ -256,11 +265,11 @@ void timerIsr() // if timerISR gets triggered mistakenly, can add a variable cou
 */
 int touchfade() // find a way to trigger recalibrate while in this function
 {
-  
+
   while (1) {
     readCapacitance();
-    
-    if ((abs(converted_val - old_converted_val) > CAP_STATIONARY) || needRecalibrate == true) {      
+
+    if ((abs(converted_val - old_converted_val) > CAP_STATIONARY) || needRecalibrate == true) {
       timerCount = NOT_STARTED;
       break; // if we are out of stationary range or we need to recalibrate
     }
@@ -271,11 +280,11 @@ int touchfade() // find a way to trigger recalibrate while in this function
       break;
     }
     else {// else we must be in range and outputtedPwm is positive (pwm will never be negative)
-      pwm -= 5;
+      pwm -= 2;
       Serial.println(pwm);
     }
 
-    
+
   }
 }
 
