@@ -185,6 +185,7 @@ void findStartVals()
 
 
   for (int i = 0; i < NUM_READINGS; i++) {
+    delay(15); // need delay here or readings will be of a bigger range than usual
     baselineVals[i] = (((float)readValue() / 16777215) * 8.192) - 4.096;  // Read in capacitance value, cast as float (from long)
     //    Serial.println(baselineVals[i]);
   }

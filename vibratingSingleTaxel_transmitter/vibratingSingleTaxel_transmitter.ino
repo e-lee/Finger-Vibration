@@ -33,8 +33,8 @@
 #define PWM_HIGH 255
 #define PWM_LOW 0
 #define CAP_RANGE 0.8
-#define NUM_READINGS 100
-#define CAP_STATIONARY 0.1 // range of values cap can oscillate between to be "const"
+#define NUM_READINGS 10
+#define CAP_STATIONARY 0.05 // range of values cap can oscillate between to be "const"
 #define NOT_STARTED -1
 #define STARTED 0
 #define FINISHED 1
@@ -212,11 +212,11 @@ void fadeaway()
         /* start time */
         Timer1.restart(); //start time at the beginning of new period
         timerCount = STARTED; //signal timer has been started but not finished counting
-        Serial.println("timer started");
+        Serial.println("timer started!!!!!!!!!!");
       }
     }
     else if (timerCount == STARTED) { /*the timer has been started and we are out of stationary range*/
-      Serial.print("timer stopped ");
+      Serial.print("timer stopped??? ");
       /*stop counting*/
       Timer1.stop();
       /*reset the timer*/
@@ -238,7 +238,7 @@ void fadeaway()
       pwm = 0;
     }
     else if (timerCount == STARTED) { /*the timer has been started and we are out of stationary range*/
-      Serial.print("timer stopped ");
+      Serial.print("timer stopped?????????");
       /*stop counting*/
       Timer1.stop();
       /*reset the timer*/
@@ -307,19 +307,20 @@ void findStartVals()
 {
 
   float baselineVals[NUM_READINGS];
-  float average = 0;
+  float total = 0;
   float minVal;
   float maxVal;
 
   // find baseline capacitance value by reading first 100 values (but omit first 10 values, are sometimes negative values):
-  for (int i = 0; i < 10; i++) {
-    readValue(); //make sure this line actually executes
+  for (int i = 0; i < 1; i++) {
+    Serial.println((((float)readValue() / 16777215) * 8.192) - 4.096); //make sure this line actually executes
   }
 
-
+  Serial.println("START BASELINE");
   for (int i = 0; i < NUM_READINGS; i++) {
+    delay(15); // need delay here or readings will be of a bigger range than usual
     baselineVals[i] = (((float)readValue() / 16777215) * 8.192) - 4.096;  // Read in capacitance value, cast as float (from long)
-    //    Serial.println(baselineVals[i]);
+    Serial.println(baselineVals[i]);
   }
 
   // initialize minVal and maxVal
@@ -328,7 +329,7 @@ void findStartVals()
 
   // average values in array to find "baseline" cap value
   for (int i = 0; i < NUM_READINGS; i++) {
-    average = average + baselineVals[i];
+    total = total + baselineVals[i];
 
     // check whether current value bigger than previous maxVal
     if ((baselineVals[i] > maxVal) && (baselineVals[i] > 0)) {
@@ -342,11 +343,10 @@ void findStartVals()
 
   }
 
-  baseline = average / NUM_READINGS; // put baseline value into array
-  CAP_TOUCH = (maxVal - minVal) ; // calculate "average" error
-
-  Serial.println("average, baseline, Min, Max:");
-  Serial.println(average);
+  baseline = total / NUM_READINGS; // put baseline value into array
+  CAP_TOUCH = (maxVal - minVal) ; // calculate full range of values read in baseline
+  Serial.println("total, baseline, Min, Max:");
+  Serial.println(total);
   Serial.println(baseline);
   Serial.println(minVal);
   Serial.println(maxVal);
