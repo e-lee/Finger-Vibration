@@ -239,7 +239,7 @@ void fadeaway()
       //      if(abs(converted_val - old_converted_val) > CAP_STATIONARY) { // if we are outside of what we consider a "constant touch"
       Serial.print("faded, first_touch = ");
       Serial.print(first_touch);
-      if ((abs(converted_val - first_touch) > CAP_STATIONARY) || (converted_val < baseline + CAP_TOUCH )) {
+      if ((abs(converted_val - first_touch) > CAP_STATIONARY) || (converted_val < baseline + CAP_TOUCH)) {
         //revert to using regular pwm:
         /*reset timer count*/
         timerCount = NOT_STARTED;
@@ -286,7 +286,7 @@ int touchfade() // find a way to trigger recalibrate while in this function
   while (1) {
     readCapacitance();
 
-    if ((abs(converted_val - old_converted_val) > CAP_STATIONARY) || needRecalibrate == true) {
+    if ((abs(converted_val - first_touch) > CAP_STATIONARY) || needRecalibrate == true) {
       timerCount = NOT_STARTED;
       break; // if we are out of stationary range or we need to recalibrate
     }
