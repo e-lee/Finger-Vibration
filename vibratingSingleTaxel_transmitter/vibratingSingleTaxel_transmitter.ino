@@ -1,5 +1,5 @@
 /*******************************
-   MAKE SURE THAT IN "TimerOne.h" that TCNT1 = 1 (not TCNT1 = 0)
+   MAKE SURE that in "TimerOne.h" that TCNT1 = 1 (not TCNT1 = 0)
    otherwise, interrupt will trigger immediately after it is enabled/started
  *******************************/
 
@@ -34,7 +34,7 @@
 #define PWM_LOW 0
 #define CAP_RANGE 0.8
 #define NUM_READINGS 100
-#define CAP_STATIONARY 0.1 // range of values cap can oscillate between to be "const"
+#define CAP_STATIONARY 0.2 // range of values cap can oscillate between to be "const"
 #define NOT_STARTED -1
 #define STARTED 0
 #define FINISHED 1
@@ -215,10 +215,10 @@ void fadeaway()
       /* start time */
       if (abs(converted_val - old_converted_val) < CAP_STATIONARY) { 
         first_touch = converted_val; // save the first val for comparison with later cap values
-        Serial.println(first_touch);
         Timer1.restart(); //start time at the beginning of new period
         timerCount = STARTED; //signal timer has been started but not finished counting
         Serial.println("timer started!!!!!!!!!!");
+        Serial.println(first_touch);
       }
     }
     else if (timerCount == STARTED) { /*the timer has been started and we are out of stationary range*/
@@ -237,11 +237,9 @@ void fadeaway()
   else { /* either there is no touch, we have faded away, or we have finished counting and still need to fade */
     if (faded == true) { /*we have already faded pwm away, so the pwm is zero*/
       //      if(abs(converted_val - old_converted_val) > CAP_STATIONARY) { // if we are outside of what we consider a "constant touch"
-      Serial.print("faded, first_touch =");
+      Serial.print("faded, first_touch = ");
       Serial.print(first_touch);
-//      Serial.print(
-//      Serial.print(
-      if (abs(converted_val - first_touch) > CAP_STATIONARY) {
+      if ((abs(converted_val - first_touch) > CAP_STATIONARY) || (converted_val < baseline + CAP_TOUCH )) {
         //revert to using regular pwm:
         /*reset timer count*/
         timerCount = NOT_STARTED;
