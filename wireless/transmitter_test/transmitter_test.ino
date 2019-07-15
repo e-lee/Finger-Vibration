@@ -23,7 +23,7 @@ void setup() {
 }
 void loop() {
   const char text[] = "Hello World";
-  radio.write(&text, sizeof(text));
+  r = radio.write(&text, sizeof(text));
   Serial.println(r);
   delay(1000);
 }

@@ -334,7 +334,9 @@ int touchfade() // find a way to trigger recalibrate while in this function
       analogWrite(vibPin1, pwm);
       Serial.println(pwm);
     }
-
+/*14mm x 10mm*/
+/* tail 21mm long, 1mm wide */
+/* make copper tail */
 
   }
 }
