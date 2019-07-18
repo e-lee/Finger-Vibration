@@ -16,7 +16,7 @@
 #include <RF24.h>
 #include <TimerOne.h>
 
-#define I2C_ADDRESS  0x48 					// 0x90 shift one to the right
+#define I2C_ADDRESS  0x48           // 0x90 shift one to the right
 #define REGISTER_STATUS 0x00
 #define REGISTER_CAP_DATA 0x01
 #define REGISTER_CAP_SETUP 0x07
@@ -38,10 +38,10 @@
 #define MED_TOUCH 1
 #define HARD_TOUCH 2
 
-float CDC_val = 0;							// CDC value
+float CDC_val = 0;              // CDC value
 
 // declare pin names
-const int vibPin1 = 9; // ******** changed from transmitter code
+const int vibPin1 = 11; // ******** changed because of update
 const int LEDPower = 5;
 const int Gnd = 4;
 const int ButtonInterrupt = 2;

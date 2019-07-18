@@ -17,6 +17,7 @@ const byte address[6] = "00001";
 void setup() {
   Serial.begin(9600);
   radio.begin();
+  radio.setAutoAck(false);
   radio.openWritingPipe(address);
   radio.setPALevel(RF24_PA_MIN);
   radio.stopListening();

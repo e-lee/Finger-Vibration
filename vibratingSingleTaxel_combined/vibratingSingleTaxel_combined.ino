@@ -62,7 +62,7 @@ const int Gnd = 4;
 const int ButtonInterrupt = 2;
 const int ButtonPower = 5;
 const int ButtonGnd = 6;
-const int vibpin1 = 9;
+const int vibpin1 = 11;
 
 // declare global variables for finger vibration
 float baseline = 0;
