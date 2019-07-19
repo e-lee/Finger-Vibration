@@ -53,15 +53,15 @@
 float CDC_val = 0;              // initial CDC value
 
 // declare user const for transmission or not
-const int isTransmitter = false;
+const int isTransmitter = true;
 const int isPwmLinear = false;
 
 // declare pin names
-const int LEDPower = 7;
-const int Gnd = 4;
-const int ButtonInterrupt = 2;
-const int ButtonPower = 5;
-const int ButtonGnd = 6;
+//const int LEDPower = 7;
+//const int Gnd = 4;
+//const int ButtonInterrupt = 2;
+//const int ButtonPower = 5;
+//const int ButtonGnd = 6;
 const int vibpin1 = 11;
 
 // declare global variables for finger vibration
@@ -81,26 +81,30 @@ volatile boolean needRecalibrate = false;
 volatile int timerCount = NOT_STARTED;
 
 // declare global variables for rf transmission
-RF24 radio(10, 9); // CE, CSN (CSN is 9, CE is 10)
-const byte address[6] = "00001";
+//RF24 radio(10, 9); // CE, CSN (CSN is 9, CE is 10)
+//const byte address[6] = "00001";
+
+// declare global variables for NEW rf transmission
+RF24 radio(9, 10);
+const uint64_t pipes[2] = { 0xF0F0F0F0E1LL, 0xF0F0F0F0D2LL };
 
 
 /* ______FUNCTION TO INITIALIZE ARDUINO______ */
 void setup()
 {
   // ** Set pin modes
-  pinMode(LEDPower, OUTPUT);
-  pinMode(Gnd, OUTPUT);
-  pinMode(ButtonInterrupt, INPUT);
-  pinMode(ButtonPower, OUTPUT);
+  //  pinMode(LEDPower, OUTPUT);
+  //  pinMode(Gnd, OUTPUT);
+  //  pinMode(ButtonInterrupt, INPUT);
+  //  pinMode(ButtonPower, OUTPUT);
   //  pinMode(ButtonGnd, OUTPUT);
 
   // ** Initialize pin voltages:
   //  digitalWrite(Gnd, LOW);
-  digitalWrite(ButtonPower, HIGH);
+  //  digitalWrite(ButtonPower, HIGH);
   //  digitalWrite(ButtonGnd, LOW);
 
-  digitalWrite(LEDPower, HIGH); //signal the start of calibration
+  //  digitalWrite(LEDPower, HIGH); //signal the start of calibration
 
   Wire.begin();             // Set up I2C for operation
 
@@ -137,17 +141,27 @@ void setup()
   Timer1.attachInterrupt(timerIsr); // attach the service routine here
   Timer1.stop();
 
-  //  //**** set up rf transmission
-  //  radio.begin();
-  //  radio.openWritingPipe(address);
-  //  radio.setPALevel(RF24_PA_MIN);
-  //  radio.stopListening();
+  //**** set up rf transmission
+  if (isTransmitter == true) {
+    //    radio.begin();
+    //    radio.openWritingPipe(address);
+    //    radio.setPALevel(RF24_PA_MIN);
+    //    radio.stopListening();
+
+    // ** set up NEW rf transmission
+    radio.begin();
+    radio.setAutoAck(false);
+    radio.setRetries(15,15);
+    radio.openReadingPipe(1,pipes[1]);
+    radio.startListening();
+
+  }
 
   // initialize converted_val (so old_converted_val has a proper value in the first run of loop())
   converted_val = baseline;
 
   //signal the end of calibration
-  digitalWrite(LEDPower, LOW);
+  //  digitalWrite(LEDPower, LOW);
 
   // why is my timer interrupt triggering on its own??
   timerCount = NOT_STARTED;
@@ -160,36 +174,74 @@ void loop()
   old_converted_val = converted_val; // save the old converted_val
   readCapacitance(); // result is stored in global variable converted_val
 
-  Serial.print(timerCount);
-  Serial.print(" ");
+  //  Serial.print(timerCount);
+  //  Serial.print(" ");
   Serial.println(converted_val, 4); // print new capacitance value to serial
 
   findpwm(); // find new pwm according to new converted_val
-  checkRecalibrate(); // check if need to recalibrate baseline (if button has been pressed)
+  //  checkRecalibrate(); // check if need to recalibrate baseline (if button has been pressed)
   fadeaway(); // check if need to fade
+  sendpwm(); // check if supposed to act as transmitter, then send pwm accordingly 
+}
 
+void sendpwm() 
+{
   //  check whether we need to transmit or not
   if (isTransmitter == false) {
-
     //  write pwm to microcontroller
     analogWrite(vibpin1, pwm);
   }
   else {
     //    transmit pwm to other microcontroller
-    Serial.println(pwm);
-    radio.write(&pwm, sizeof(pwm));
+     // First, stop listening so we can talk.
+    radio.stopListening();
+   
+    bool ok = radio.write( &pwm, sizeof(int) );
+    
+    if (ok)
+      printf("ok...");
+    else
+      printf("failed.\n\r");
+
+    // Now, continue listening
+    radio.startListening();
+
+    // Wait here until we get a response, or timeout (250ms)
+    unsigned long started_waiting_at = millis();
+    bool timeout = false;
+    while ( ! radio.available() && ! timeout )
+      if (millis() - started_waiting_at > 200 )
+        timeout = true;
+
+    // Describe the results
+    if ( timeout )
+    {
+      printf("Failed, response timed out.\n\r");
+    }
+    else
+    {
+      // Grab the response, compare, and send to debugging spew
+      int response;
+      radio.read( &response, sizeof(int) );
+
+      // Spew it
+      printf("Got response %d \n\r", response);
+    }
+
+    // wait a tad before trying again
+    delay(50);
   }
 }
 
-void checkRecalibrate()
-{
-  if (needRecalibrate == true) {
-    Serial.println("needRecalibrate is true");
-    findStartVals(); //call calibrating function
-    digitalWrite(LEDPower, LOW); // turn LED off to signal recalibration was finished
-    needRecalibrate = false;
-  }
-}
+//void checkRecalibrate()
+//{
+//  if (needRecalibrate == true) {
+//    Serial.println("needRecalibrate is true");
+//    findStartVals(); //call calibrating function
+//    digitalWrite(LEDPower, LOW); // turn LED off to signal recalibration was finished
+//    needRecalibrate = false;
+//  }
+//}
 
 void findpwm()
 {
@@ -309,68 +361,68 @@ void fadeaway()
       /*else there is no touch*/
     }
   }
-    else {
-      if ((faded == false) && (timerCount != FINISHED) && (pwm > 0)) { /* only enter this part of the funct iff a real touch has been detected AND timer is not finished counting */
-        Serial.print("const touch detected ");
-        if (timerCount == NOT_STARTED) { /*time not started*/
-          /* start time */
-          if (abs(converted_val - old_converted_val) < CAP_STATIONARY) {
-            /* save the initial segment we are in: */
-            // first_touch = converted_val; // save the first val for comparison with later cap values
-            first_touch = checkTouch(converted_val);
-  
-            Timer1.restart(); //start time at the beginning of new period
-            timerCount = STARTED; //signal timer has been started but not finished counting
-            Serial.println("timer started!!!!!!!!!!");
-            Serial.println(first_touch);
-          }
-        }
-        else if (timerCount == STARTED) { /*the timer has been started and we are out of stationary range*/
-          // if (abs(converted_val - first_touch) > CAP_STATIONARY) {
-          if (checkTouch(converted_val) != first_touch) {
-            Serial.print("timer stopped???");
-            Serial.println(old_converted_val);
-            Serial.println(converted_val);
-  
-            /*stop counting*/
-            Timer1.stop();
-            /*reset the timer*/
-            timerCount = NOT_STARTED; // internal timer count is reset when time is started again
-          }
+  else {
+    if ((faded == false) && (timerCount != FINISHED) && (pwm > 0)) { /* only enter this part of the funct iff a real touch has been detected AND timer is not finished counting */
+      Serial.print("const touch detected ");
+      if (timerCount == NOT_STARTED) { /*time not started*/
+        /* start time */
+        if (abs(converted_val - old_converted_val) < CAP_STATIONARY) {
+          /* save the initial segment we are in: */
+          // first_touch = converted_val; // save the first val for comparison with later cap values
+          first_touch = checkTouch(converted_val);
+
+          Timer1.restart(); //start time at the beginning of new period
+          timerCount = STARTED; //signal timer has been started but not finished counting
+          Serial.println("timer started!!!!!!!!!!");
+          Serial.println(first_touch);
         }
       }
-      else { /* either there is no touch, we have faded away, or we have finished counting and still need to fade */
-        if (faded == true) { /*we have already faded pwm away, so the pwm is zero*/
-          //      if(abs(converted_val - old_converted_val) > CAP_STATIONARY) { // if we are outside of what we consider a "constant touch"
-          Serial.print("faded, first_touch = ");
-          Serial.print(first_touch);
-          if (checkTouch(converted_val) != first_touch || (converted_val < baseline + CAP_TOUCH)) {
-            //revert to using regular pwm:
-            /*reset timer count*/
-            timerCount = NOT_STARTED;
-            /*revert to using regular pwm*/
-            faded = false;
-            Serial.println("breaking out of fade");
-          }
-          /*else keep fadeaway*/
-          pwm = 0;
-        }
-        else if (timerCount == STARTED) { /*the timer has been started and we are out of stationary range*/
-          Serial.print("timer stopped?????????????????? ");
+      else if (timerCount == STARTED) { /*the timer has been started and we are out of stationary range*/
+        // if (abs(converted_val - first_touch) > CAP_STATIONARY) {
+        if (checkTouch(converted_val) != first_touch) {
+          Serial.print("timer stopped???");
+          Serial.println(old_converted_val);
+          Serial.println(converted_val);
+
           /*stop counting*/
           Timer1.stop();
           /*reset the timer*/
           timerCount = NOT_STARTED; // internal timer count is reset when time is started again
         }
-        else if (timerCount == FINISHED) { /*timer has finished counting 4s (and we have not faded yet)*/
-          /* start fadeaway */
-          Serial.println("timer up, beginning to fade");
-          touchfade();
-        }
-        /*else there is no touch*/
       }
     }
-  
+    else { /* either there is no touch, we have faded away, or we have finished counting and still need to fade */
+      if (faded == true) { /*we have already faded pwm away, so the pwm is zero*/
+        //      if(abs(converted_val - old_converted_val) > CAP_STATIONARY) { // if we are outside of what we consider a "constant touch"
+        Serial.print("faded, first_touch = ");
+        Serial.print(first_touch);
+        if (checkTouch(converted_val) != first_touch || (converted_val < baseline + CAP_TOUCH)) {
+          //revert to using regular pwm:
+          /*reset timer count*/
+          timerCount = NOT_STARTED;
+          /*revert to using regular pwm*/
+          faded = false;
+          Serial.println("breaking out of fade");
+        }
+        /*else keep fadeaway*/
+        pwm = 0;
+      }
+      else if (timerCount == STARTED) { /*the timer has been started and we are out of stationary range*/
+        Serial.print("timer stopped?????????????????? ");
+        /*stop counting*/
+        Timer1.stop();
+        /*reset the timer*/
+        timerCount = NOT_STARTED; // internal timer count is reset when time is started again
+      }
+      else if (timerCount == FINISHED) { /*timer has finished counting 4s (and we have not faded yet)*/
+        /* start fadeaway */
+        Serial.println("timer up, beginning to fade");
+        touchfade();
+      }
+      /*else there is no touch*/
+    }
+  }
+
 }
 
 /*
@@ -525,13 +577,13 @@ int myMap(float x, float in_min, float in_max, float out_min, float out_max)
    Function to handle the button interrupt
 */
 
-void Button_ISR()
-{
-  digitalWrite(LEDPower, HIGH); // turn LED on to signal recalibration
-  Serial.println("interrupt is triggered");
-  needRecalibrate = true;
-
-}
+//void Button_ISR()
+//{
+//  digitalWrite(LEDPower, HIGH); // turn LED on to signal recalibration
+//  Serial.println("interrupt is triggered");
+//  needRecalibrate = true;
+//
+//}
 
 /* ______READ VALUE FUNCTION______
    This function checks the sensor's status reg until the data is ready and then reads it in
