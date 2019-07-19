@@ -59,7 +59,6 @@ void setup(void)
   //
 
   Serial.begin(9600);
-  Serial.println("noice");
   printf_begin();
   printf("\n\rRF24/examples/GettingStarted/\n\r");
   printf("ROLE: %s\n\r",role_friendly_name[role]);
@@ -124,9 +123,12 @@ void loop(void)
     radio.stopListening();
 
     // Take the time, and send it.  This will block until complete
-    unsigned long time = millis();
-    printf("Now sending %lu...",time);
-    bool ok = radio.write( &time, sizeof(unsigned long) );
+//    unsigned long time = millis();
+//    printf("Now sending %lu...",time);
+
+    const int message = 3;
+    printf("Now sending message...");
+    bool ok = radio.write( &message, sizeof(int) );
     
     if (ok)
       printf("ok...");
@@ -158,8 +160,8 @@ void loop(void)
       printf("Got response %lu, round-trip delay: %lu\n\r",got_time,millis()-got_time);
     }
 
-    // Try again 1s later
-    delay(1000);
+    // wait a tad before trying again
+    delay(1);
 //  }
 
   //
