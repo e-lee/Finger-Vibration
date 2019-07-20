@@ -176,10 +176,11 @@ void loop()
 
   //  Serial.print(timerCount);
   //  Serial.print(" ");
-  Serial.println(converted_val, 4); // print new capacitance value to serial
+//  Serial.println(converted_val, 4); // print new capacitance value to serial
 
   findpwm(); // find new pwm according to new converted_val
   //  checkRecalibrate(); // check if need to recalibrate baseline (if button has been pressed)
+  Serial.println(pwm);
   fadeaway(); // check if need to fade
   sendpwm(); // check if supposed to act as transmitter, then send pwm accordingly 
 }
@@ -303,7 +304,7 @@ void fadeaway()
   if (isPwmLinear == true) {
     /* only check iff a touch has been detected, the timer is not finished counting, and we have no   */
     if ((faded == false) && (timerCount != FINISHED) && (pwm > 0)) { /* only enter this part of the funct iff a real touch has been detected AND timer is not finished counting */
-      Serial.print("const touch detected ");
+//      Serial.print("const touch detected ");
       //    Serial.println(converted_val);
       //    Serial.println(first_touch);
       //    Serial.println(abs(converted_val - first_touch));
@@ -314,14 +315,14 @@ void fadeaway()
           Timer1.restart(); //start time at the beginning of new period
           timerCount = STARTED; //signal timer has been started but not finished counting
           Serial.println("timer started!!!!!!!!!!");
-          Serial.println(first_touch);
+//          Serial.println(first_touch);
         }
       }
       else if (timerCount == STARTED) { /*the timer has been started and we are out of stationary range*/
         if (abs(converted_val - first_touch) > CAP_STATIONARY) {
           Serial.print("timer stopped???");
-          Serial.println(converted_val);
-          Serial.println(old_converted_val);
+//          Serial.println(converted_val);
+//          Serial.println(old_converted_val);
 
           /*stop counting*/
           Timer1.stop();
@@ -363,7 +364,7 @@ void fadeaway()
   }
   else {
     if ((faded == false) && (timerCount != FINISHED) && (pwm > 0)) { /* only enter this part of the funct iff a real touch has been detected AND timer is not finished counting */
-      Serial.print("const touch detected ");
+//      Serial.print("const touch detected ");
       if (timerCount == NOT_STARTED) { /*time not started*/
         /* start time */
         if (abs(converted_val - old_converted_val) < CAP_STATIONARY) {
@@ -374,15 +375,15 @@ void fadeaway()
           Timer1.restart(); //start time at the beginning of new period
           timerCount = STARTED; //signal timer has been started but not finished counting
           Serial.println("timer started!!!!!!!!!!");
-          Serial.println(first_touch);
+//          Serial.println(first_touch);
         }
       }
       else if (timerCount == STARTED) { /*the timer has been started and we are out of stationary range*/
         // if (abs(converted_val - first_touch) > CAP_STATIONARY) {
         if (checkTouch(converted_val) != first_touch) {
           Serial.print("timer stopped???");
-          Serial.println(old_converted_val);
-          Serial.println(converted_val);
+//          Serial.println(old_converted_val);
+//          Serial.println(converted_val);
 
           /*stop counting*/
           Timer1.stop();
@@ -394,7 +395,7 @@ void fadeaway()
     else { /* either there is no touch, we have faded away, or we have finished counting and still need to fade */
       if (faded == true) { /*we have already faded pwm away, so the pwm is zero*/
         //      if(abs(converted_val - old_converted_val) > CAP_STATIONARY) { // if we are outside of what we consider a "constant touch"
-        Serial.print("faded, first_touch = ");
+//        Serial.print("faded, first_touch = ");
         Serial.print(first_touch);
         if (checkTouch(converted_val) != first_touch || (converted_val < baseline + CAP_TOUCH)) {
           //revert to using regular pwm:
@@ -477,7 +478,7 @@ int touchfade() // find a way to trigger recalibrate while in this function
         }
         else {
           Serial.println(pwm);
-          radio.write(&pwm, sizeof(pwm));
+          sendpwm();
         }
       }
     }
