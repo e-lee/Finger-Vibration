@@ -52,7 +52,7 @@
 
 float CDC_val = 0;              // initial CDC value
 
-// declare user const for transmission or not
+/* USER DEFINED CONSTANTS */
 const int isTransmitter = true;
 const int isPwmLinear = false;
 
@@ -152,6 +152,7 @@ void setup()
     radio.begin();
     radio.setAutoAck(false);
     radio.setRetries(15,15);
+    radio.openWritingPipe(pipes[0]); // open pipes for transmission
     radio.openReadingPipe(1,pipes[1]);
     radio.startListening();
 
@@ -171,6 +172,7 @@ void setup()
 /* ______MAIN PROGRAM______ */
 void loop()
 {
+  
   old_converted_val = converted_val; // save the old converted_val
   readCapacitance(); // result is stored in global variable converted_val
 
