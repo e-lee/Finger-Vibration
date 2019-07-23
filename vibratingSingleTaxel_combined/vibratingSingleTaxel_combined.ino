@@ -503,8 +503,14 @@ int touchfade() // find a way to trigger recalibrate while in this function
         pwm -= 2;
 
         // ** either transmit the pwm here or make it the new pwm
-        analogWrite(vibpin1, pwm);
-        Serial.println(pwm);
+        if (isTransmitter == false) {
+          analogWrite(vibpin1, pwm);
+          Serial.println(pwm);
+        }
+        else {
+          Serial.println(pwm);
+          sendpwm();
+        }
       }
     }
   }
