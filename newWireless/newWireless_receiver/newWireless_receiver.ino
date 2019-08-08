@@ -54,6 +54,8 @@ role_e role = role_pong_back;
 
 void setup(void)
 {
+
+//  analogWrite(3, 170);
   //
   // Print preamble
   //
@@ -77,7 +79,7 @@ void setup(void)
 
   // optionally, reduce the payload size.  seems to
   // improve reliability
-  //radio.setPayloadSize(8);
+//  radio.setPayloadSize(8);
 
   //
   // Open pipes to other nodes for communication
@@ -89,19 +91,24 @@ void setup(void)
   // Open the 'other' pipe for reading, in position #1 (we can have up to 5 pipes open for reading)
 
   //if ( role == role_ping_out )
-  {
+//  {
     //radio.openWritingPipe(pipes[0]);
-    radio.openReadingPipe(1,pipes[1]);
-  }
+//    radio.openReadingPipe(1,pipes[1]);
+//  }
   //else
-  {
-    //radio.openWritingPipe(pipes[1]);
-    //radio.openReadingPipe(1,pipes[0]);
-  }
+//  {
+    radio.openWritingPipe(pipes[1]);
+    radio.openReadingPipe(1,pipes[0]);
+//  }
 
   //
   // Start listening
   //
+
+  radio.openReadingPipe(1,pipes[1]); //open same pipe as transmitter
+
+  radio.openWritingPipe(pipes[1]);
+  radio.openReadingPipe(1,pipes[0]);
 
   radio.startListening();
 
@@ -114,6 +121,8 @@ void setup(void)
 
 void loop(void)
 {
+//  analogWrite(3, 170);
+
 //  //
 //  // Ping out role.  Repeatedly send the current time
 //  //
@@ -170,8 +179,6 @@ void loop(void)
 //  {
 
 //      role = role_pong_back;
-      radio.openWritingPipe(pipes[1]);
-      radio.openReadingPipe(1,pipes[0]);
       
     // if there is data ready
     if ( radio.available() )
@@ -210,27 +217,27 @@ void loop(void)
   // Change roles
   //
 
-  if ( Serial.available() )
-  {
-    char c = toupper(Serial.read());
-    if ( c == 'T' && role == role_pong_back )
-    {
-      printf("*** CHANGING TO TRANSMIT ROLE -- PRESS 'R' TO SWITCH BACK\n\r");
-
-      // Become the primary transmitter (ping out)
-      role = role_ping_out;
-      radio.openWritingPipe(pipes[0]);
-      radio.openReadingPipe(1,pipes[1]);
-    }
-    else if ( c == 'R' && role == role_ping_out )
-    {
-      printf("*** CHANGING TO RECEIVE ROLE -- PRESS 'T' TO SWITCH BACK\n\r");
-      
-      // Become the primary receiver (pong back)
-      role = role_pong_back;
-      radio.openWritingPipe(pipes[1]);
-      radio.openReadingPipe(1,pipes[0]);
-    }
-  }
+//  if ( Serial.available() )
+//  {
+//    char c = toupper(Serial.read());
+//    if ( c == 'T' && role == role_pong_back )
+//    {
+//      printf("*** CHANGING TO TRANSMIT ROLE -- PRESS 'R' TO SWITCH BACK\n\r");
+//
+//      // Become the primary transmitter (ping out)
+//      role = role_ping_out;
+//      radio.openWritingPipe(pipes[0]);
+//      radio.openReadingPipe(1,pipes[1]);
+//    }
+//    else if ( c == 'R' && role == role_ping_out )
+//    {
+//      printf("*** CHANGING TO RECEIVE ROLE -- PRESS 'T' TO SWITCH BACK\n\r");
+//      
+//      // Become the primary receiver (pong back)
+//      role = role_pong_back;
+//      radio.openWritingPipe(pipes[1]);
+//      radio.openReadingPipe(1,pipes[0]);
+//    }
+//  }
 }
 // vim:cin:ai:sts=2 sw=2 ft=cpp

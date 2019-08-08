@@ -50,10 +50,16 @@ typedef enum { role_ping_out = 1, role_pong_back } role_e;
 const char* role_friendly_name[] = { "invalid", "Ping out", "Pong back"};
 
 // The role of the current running sketch
-role_e role = role_pong_back;
+role_e role = role_ping_out;
 
 void setup(void)
 {
+//    analogWrite(3,170);
+
+//   pinMode(11,OUTPUT);     //Configuring pins as input and output
+//   pinMode(13,OUTPUT);
+//   pinMode(ss,OUTPUT);
+//   pinMode(12,INPUT);
   //
   // Print preamble
   //
@@ -76,7 +82,7 @@ void setup(void)
 
   // optionally, reduce the payload size.  seems to
   // improve reliability
-  //radio.setPayloadSize(8);
+//  radio.setPayloadSize(8);
 
   //
   // Open pipes to other nodes for communication
@@ -87,15 +93,15 @@ void setup(void)
   // Open 'our' pipe for writing
   // Open the 'other' pipe for reading, in position #1 (we can have up to 5 pipes open for reading)
 
-  //if ( role == role_ping_out )
+  if ( role == role_ping_out )
   {
-    //radio.openWritingPipe(pipes[0]);
+    radio.openWritingPipe(pipes[0]);
     radio.openReadingPipe(1,pipes[1]);
   }
-  //else
+  else
   {
-    //radio.openWritingPipe(pipes[1]);
-    //radio.openReadingPipe(1,pipes[0]);
+    radio.openWritingPipe(pipes[1]);
+    radio.openReadingPipe(1,pipes[0]);
   }
 
   //
@@ -113,6 +119,7 @@ void setup(void)
 
 void loop(void)
 {
+//  analogWrite(3,170);
   //
   // Ping out role.  Repeatedly send the current time
   //
