@@ -36,7 +36,7 @@
 
 /********** USER DEFINED CONSTANTS ************/
 const int isTransmitter = false; // set as true if want to act as transmitter, false if want to output vibration on vibpin (pin 11)
-const int isPwmLinear = false; // set as true if want pwm to change linearly with
+const int isPwmLinear = false; // set as true if want pwm to change linearly with changes in capacitance, false if want pwm to remain within 4 discrete values
 
 /* linear pwm constants */
 #define PWM_HIGH 255 // the highest pwm outputted
@@ -210,16 +210,6 @@ void sendpwm()
   }
 }
 
-//void checkRecalibrate()
-//{
-//  if (needRecalibrate == true) {
-//    Serial.println("needRecalibrate is true");
-//    findStartVals(); //call calibrating function
-//    digitalWrite(LEDPower, LOW); // turn LED off to signal recalibration was finished
-//    needRecalibrate = false;
-//  }
-//}
-
 void findpwm()
 {
 
@@ -348,10 +338,12 @@ void segFadeTimer()
       if (abs(converted_val - old_converted_val) < CAP_STATIONARY) {
         /* save the initial segment we are in: */
         first_touch = checkTouch(converted_val);
-
+        Serial.print("first_touch = ");
+        Serial.println(first_touch);
+      
         Timer1.restart(); //start time at the beginning of new period
         timerCount = STARTED; //signal timer has been started but not finished counting
-        Serial.println("timer started!!!!!!!!!!");
+        Serial.println("timer started!!!!!!!!!?!");
         //          Serial.println(first_touch);
       }
     }
@@ -411,7 +403,7 @@ void timerIsr() // if timerISR gets triggered mistakenly, can add a variable cou
   Timer1.stop(); // stop the timer from counting any further
 }
 
-int checkTouch(float capVal) {
+float checkTouch(float capVal) {
   if (capVal <= baseline + cap_touch + MED_TOUCH) {
     return LIGHT_TOUCH;
   }
@@ -430,7 +422,7 @@ void linearFade() {
   while (1) {
     readCapacitance();
 
-    if ((abs(converted_val - first_touch) > CAP_STATIONARY) || needRecalibrate == true) {
+    if ((abs(converted_val - first_touch) > CAP_STATIONARY)) {
       faded = false;
       timerCount = NOT_STARTED;
       break; // if we are out of stationary range or we need to recalibrate
@@ -460,8 +452,9 @@ void segFade() {
   while (1) {
     readCapacitance();
 
-    if ((checkTouch(converted_val) != first_touch ) || needRecalibrate == true) {
+    if ((checkTouch(converted_val) != first_touch )) {
       timerCount = NOT_STARTED;
+      Serial.println("big noice");
       break; // if we are out of stationary range or we need to recalibrate
     }
     else if (pwm <= 0) {
@@ -476,7 +469,9 @@ void segFade() {
       // ** either transmit the pwm here or make it the new pwm
       if (isTransmitter == false) {
         analogWrite(vibpin1, pwm);
-        Serial.println(pwm);
+        Serial.print(pwm);
+        Serial.print(" current_touch =");
+        Serial.println(checkTouch(converted_val));
       }
       else {
         Serial.println(pwm);
@@ -485,10 +480,6 @@ void segFade() {
     }
   }
 }
-
-
-/* if either pwm changes or recalibrate needed, break*/
-
 
 
 /*
@@ -552,17 +543,6 @@ int myMap(float x, float in_min, float in_max, float out_min, float out_max)
   return (int)((x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min);
 }
 
-/*
-   Function to handle the button interrupt
-*/
-
-//void Button_ISR()
-//{
-//  digitalWrite(LEDPower, HIGH); // turn LED on to signal recalibration
-//  Serial.println("interrupt is triggered");
-//  needRecalibrate = true;
-//
-//}
 
 /* ______READ VALUE FUNCTION______
    This function checks the sensor's status reg until the data is ready and then reads it in
