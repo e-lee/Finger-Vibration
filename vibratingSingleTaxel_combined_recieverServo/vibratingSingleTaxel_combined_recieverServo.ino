@@ -117,16 +117,17 @@ void loop(void)
   if ( radio.available() )
   {
     // Dump the payloads until we've gotten everything
-    unsigned long output;
+    float output;
     bool done = false;
     while (!done)
     {
       // Fetch the payload, and see if this was the last one.
-      done = radio.read( &output, sizeof(unsigned long) );
+      done = radio.read( &output, sizeof(float) );
 
       // Spew it
-      printf("Got payload %lu...", output);
-
+//      printf("Got payload %lu...", output);
+      Serial.print("Got payload ");
+      Serial.println(output);
       /* control servo (or output pwm) */
       // analogWrite(5, (int)output);
 

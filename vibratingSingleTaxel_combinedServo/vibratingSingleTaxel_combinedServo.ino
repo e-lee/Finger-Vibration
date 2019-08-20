@@ -189,7 +189,6 @@ void loop()
 
 void setArmPosition()
 {
-  float moveDistance;
   float newArmPosition;
 
   // determine current arm position
@@ -257,7 +256,7 @@ void sendOutput()
       ok = radio.write( &pwm, sizeof(int) );
     }
     else {
-      ok = radio.write( &moveDistance, sizeof(float) );
+      ok = radio.write( &moveDistance, sizeof(moveDistance) );
     }
     if (ok) {
       printf("ok...Sent ");
@@ -288,7 +287,8 @@ void sendOutput()
       radio.read( &response, sizeof(int) );
 
       // Spew it
-      printf("Got response %d \n\r", response);
+      Serial.print("Got response ");
+      Serial.println(response);
     }
 
     // wait a tad before trying again
