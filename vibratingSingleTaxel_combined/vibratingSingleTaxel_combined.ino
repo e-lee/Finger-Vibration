@@ -44,6 +44,7 @@ const int isPwmLinear = false; // set as true if want pwm to change linearly wit
 #define CAP_RANGE 0.8 // the range of capacitance (pF) between pwm = PWM_LOW and pwm = PWM_HIGH
 
 /* segmented pwm constants */
+#define NO_TOUCH -0.3 // placeholder
 #define LIGHT_TOUCH 0 // placeholder for timerFade (a capacitance reading of baseline + cap_touch is considered a "light touch")
 #define MED_TOUCH 0.3 // the amount of capacitance above baseline + cap_touch for a touch to be considered a "medium touch"
 #define HARD_TOUCH 0.6 // the amount of capacitance above baseline + cap_touch for a touch to be considered a "hard touch"
@@ -76,8 +77,8 @@ const int vibpin1 = 11; // the pin at which the calculated pwm is outputted
 /* global variables */
 float baseline = 0;
 float cap_touch = 0;
-float converted_val = 0;
-float old_converted_val = 0;
+float capacitance = 0;
+float old_capacitance = 0;
 float first_touch = 0;
 int pwm = 0;
 boolean faded = false;
@@ -98,7 +99,7 @@ void setup()
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(vibpin1, OUTPUT);
 
-  digitalWrite(LED_BUILTIN, HIGH); //signal the start of calibration
+  //  digitalWrite(LED_BUILTIN, HIGH); //signal the start of calibration
 
   //    analogWrite(rfPower, 153); // power the rf module
 
@@ -145,25 +146,27 @@ void setup()
     radio.startListening();
   }
 
-  converted_val = baseline;   // initialize converted_val (so old_converted_val has a proper value in the first run of loop())
-
+  capacitance = baseline;   // initialize capacitance (so old_capacitance has a proper value in the first run of loop())
+  timerCount = NOT_STARTED; // make sure timer is not started
   digitalWrite(LED_BUILTIN, LOW);   //signal the end of calibration
-
-  // why is my timer interrupt triggering on its own??
-  timerCount = NOT_STARTED; //**************************************COMMENT this thing out and see what happens?
 }
 
 
 /* ______MAIN PROGRAM______ */
 void loop()
 {
-  old_converted_val = converted_val; // save the old converted_val
-  readCapacitance(); // new capacitance is stored in global variable converted_val
-  findpwm(); // find new pwm according to new converted_val
-  Serial.println(pwm);
+  old_capacitance = capacitance; // save the old capacitance
+  readCapacitance(); // new capacitance is stored in global variable capacitance
+  findpwm(); // find new pwm according to new capacitance
+  Serial.println(pwm); // print pwm to the screen
   fadeawayTimer(); // check if need to fade
   sendpwm(); // check if supposed to act as transmitter, then send pwm accordingly
 }
+
+/* Function: sendpwm
+   "Inputs": pwm, isTransmitter
+   Purpose: checks the state of isTransmitter and either writes the calculated pwm to vibpin1 or transmits it to another microcontroller using RF transmission
+*/
 
 void sendpwm()
 {
@@ -174,14 +177,14 @@ void sendpwm()
     // transmit pwm to other microcontroller
     radio.stopListening(); // Stop listening for a response so we can send a message
 
-    bool ok = radio.write( &pwm, sizeof(int) ); 
+    bool ok = radio.write( &pwm, sizeof(int) );
 
     if (ok)
       printf("ok...");
     else
       printf("failed.\n\r");
 
-    radio.startListening();  // switch to listening role 
+    radio.startListening();  // switch to listening role
 
     // Wait here until we get a response, or timeout (250ms)
     unsigned long started_waiting_at = millis();
@@ -210,32 +213,37 @@ void sendpwm()
   }
 }
 
+/* Function: findpwm
+   "Inputs": isPwmLinear, capacitance, baseline, cap_touch
+   "Outputs": pwm
+   Purpose: checks isPwmLinear and either linearly maps capacitance to a pwm in the range [PWM_LOW, PWM_HIGH] or maps capacitance to one of three discrete values
+*/
 void findpwm()
 {
 
   if (isPwmLinear == true) {
     /* linear pwm mapping */
     //  map capacitance to pwm (make the lowest possible vibration pwm 80):
-    pwm = myMap(converted_val, baseline + cap_touch , baseline + cap_touch + CAP_RANGE, PWM_LOW, PWM_HIGH);
+    pwm = myMap(capacitance, baseline + cap_touch , baseline + cap_touch + CAP_RANGE, PWM_LOW, PWM_HIGH);
 
-    if (converted_val < baseline + cap_touch) { //if converted_val is smaller than what we consider a touch...
+    if (capacitance < baseline + cap_touch) { //if capacitance is smaller than what we consider a touch...
       pwm = 0; //make the pwm zero percent
     }
-    else if (converted_val > baseline + cap_touch + CAP_RANGE) { //if converted_val is over the "highest pressure"...
+    else if (capacitance > baseline + cap_touch + CAP_RANGE) { //if capacitance is over the "highest pressure"...
       pwm = 255; //make the pwm 100 percent
     }
   }
   else {
     /* segmented vibration mapping */
-    if (converted_val < baseline + cap_touch) {
+    if (capacitance < baseline + cap_touch) {
       pwm = 0;
       //No Touch
     }
-    else if (converted_val <= baseline + cap_touch + MED_TOUCH) {
+    else if (capacitance <= baseline + cap_touch + MED_TOUCH) {
       pwm = 90;
       //Touch
     }
-    else if (converted_val <= baseline + cap_touch + HARD_TOUCH) {
+    else if (capacitance <= baseline + cap_touch + HARD_TOUCH) {
       pwm = 130;
       //Pressure
     }
@@ -246,9 +254,14 @@ void findpwm()
   }
 }
 
+/* Function: readCapacitance
+   "Outputs": capacitance
+   Purpose: reads in capacitance from CDC and saves it into capacitance.
+*/
+
 void readCapacitance()
 {
-  converted_val = (float)readValue();         // Read in capacitance value
+  capacitance = (float)readValue();         // Read in capacitance value
 
   // **Converts CDC value to capacitance (pF)**
   // CDC full-scale input range is +- 4.096 pF (|8.192| pF)
@@ -259,11 +272,15 @@ void readCapacitance()
   //    {y = mx + b} -->  {y = (|C range in pF|/|equivalent CDC range|)x + (C val in pF when CDC val = 0)}
   //    {y= (|8.192pF|/|16777215|)x -4.096pF}
 
-  converted_val = ((converted_val / 16777215) * 8.192) - 4.096; // converted val is capacitance value
+  capacitance = ((capacitance / 16777215) * 8.192) - 4.096; // converted val is capacitance value
   delay(15);                //Need a delay here or data will be transmitted out of order (or not at all)
 
-  // **don't need to return converted_val, it is a global variable
+  // **don't need to return capacitance, it is a global variable
 }
+
+/* Function: fadeawayTimer
+   Purpose: checks whether pwm is linearly scaled or segmented by checking isPwmLinear and calls the appropriate fadeaway timer function.
+*/
 
 void fadeawayTimer()
 {
@@ -275,126 +292,118 @@ void fadeawayTimer()
   }
 }
 
+/* Function: linearFadeTimer
+   "Inputs": old_capacitance, timerCount, faded, pwm
+   "Outputs": timerCount
+   Purpose: Detects constant touch (assuming capacitance is linearly mapped to a pwm). This is achieved by recording the first capacitance
+   that maps to a pwm > 0 and starting a timer.  The timer is stopped and reset if a capacitance reading maps to a pwm < 0 or the difference
+   between the current capcitance reading and first_touch is greater than CAP_STATIONARY. If the timer counts up to CONST_TIME,
+   linearFade is called.
+*/
 void linearFadeTimer()
 {
   /* only check iff a touch has been detected, the timer is not finished counting, and we have no   */
-  if ((faded == false) && (timerCount != FINISHED) && (pwm > 0)) { /* only enter this part of the funct iff a real touch has been detected AND timer is not finished counting */
-    if (timerCount == NOT_STARTED) { /*time not started */
-      /* start time */
-      if (abs(converted_val - old_converted_val) < CAP_STATIONARY) {
-        first_touch = converted_val; // save the first val for comparison with later cap values
+  if ((faded == false) && (timerCount != FINISHED) && (pwm > 0)) { // if a real touch has been detected AND timer is not finished counting
+    if (timerCount == NOT_STARTED) { // if time not started:
+      if (abs(capacitance - old_capacitance) < CAP_STATIONARY) { // start time
+        first_touch = capacitance; // save the first val for comparison with later cap values
         Timer1.restart(); //start time at the beginning of new period
         timerCount = STARTED; //signal timer has been started but not finished counting
-        Serial.println("timer started!!!!!!!!!!");
+        Serial.println("timer started");
       }
     }
-    else if (timerCount == STARTED) { /*the timer has been started and we are out of stationary range*/
-      if (abs(converted_val - first_touch) > CAP_STATIONARY) {
-        Serial.print("timer stopped???");
-        /*stop counting*/
-        Timer1.stop();
-        /*reset the timer*/
-        timerCount = NOT_STARTED; // internal timer count is reset when time is started again
+    else if (timerCount == STARTED) { // if the timer has been started and we are out of stationary range
+      if (abs(capacitance - first_touch) > CAP_STATIONARY) {
+        Serial.print("timer stopped, out of constant range");
+        Timer1.stop(); // stop counting
+        timerCount = NOT_STARTED; // reset timer flag - internal timer count is reset when time is started again
       }
     }
   }
-  else { /* either there is no touch, we have faded away, or we have finished counting and still need to fade */
-    if (faded == true) { /*we have already faded pwm away, so the pwm is zero*/
+  else { // either there is no touch, we have faded away, or we have finished counting and still need to fade
+    if (faded == true) { // we have already faded pwm away, so the pwm is zero
       Serial.print("faded, first_touch = ");
       Serial.print(first_touch);
-      if ((abs(converted_val - first_touch) > CAP_STATIONARY) || (converted_val < baseline + cap_touch )) {
-        //revert to using regular pwm:
-        /*reset timer count*/
-        timerCount = NOT_STARTED;
-        /*revert to using regular pwm*/
-        faded = false;
-        Serial.println("breaking out of fade");
+      if ((abs(capacitance - first_touch) > CAP_STATIONARY) || (capacitance < baseline + cap_touch )) { // if out of stationary range or no touch detected:
+        timerCount = NOT_STARTED; // reset timer flag
+        faded = false; // reset faded flag, revert to using regular pwm
+        Serial.println("const touch broken, reverting to regular pwm");
       }
-      /*else keep fadeaway*/
-      pwm = 0;
+      pwm = 0; // otherwise, we need to stay faded
     }
-    else if (timerCount == STARTED) { /*the timer has been started and we are out of stationary range*/
-      Serial.print("timer stopped?????????????????? ");
-      /*stop counting*/
-      Timer1.stop();
-      /*reset the timer*/
-      timerCount = NOT_STARTED; // internal timer count is reset when time is started again
+    else if (timerCount == STARTED) { // if the timer has been started and we are out of stationary range
+      Serial.print("timer stopped, no touch detected");
+      Timer1.stop(); // stop timer
+      timerCount = NOT_STARTED; // reset timer flag, internal timer count is reset when time is started again
     }
-    else if (timerCount == FINISHED) { /*timer has finished counting 4s (and we have not faded yet)*/
-      /* start fadeaway */
+    else if (timerCount == FINISHED) { // timer has finished counting 4s (and we have not faded yet
       Serial.println("timer up, beginning to fade");
-      linearFade();
+      linearFade(); // call function to slowly decrease pwm
     }
     /*else there is no touch*/
   }
 }
+
+/* Function: segFadeTimer
+   "Inputs": old_capacitance, timerCount, faded, pwm
+   "Outputs": timerCount
+   Purpose: Detects constant touch (assuming capacitance is linearly mapped to a pwm). This is achieved by recording the first capacitance
+   that maps to a pwm > 0 and starting a timer.  The timer is stopped and reset if a capacitance reading maps to a pwm < 0 or the difference
+   between the current capcitance reading and first_touch is greater than CAP_STATIONARY. If the timer counts up to CONST_TIME,
+   linearFade is called.
+*/
 
 void segFadeTimer()
 {
-  if ((faded == false) && (timerCount != FINISHED) && (pwm > 0)) { /* only enter this part of the funct iff a real touch has been detected AND timer is not finished counting */
-    //      Serial.print("const touch detected ");
-    if (timerCount == NOT_STARTED) { /*time not started*/
-      /* start time */
-      if (abs(converted_val - old_converted_val) < CAP_STATIONARY) {
+  if ((faded == false) && (timerCount != FINISHED) && (pwm > 0)) { // only enter this part of the funct if a real touch has been detected AND timer is not finished counting    if (timerCount == NOT_STARTED) { // if time not started
+    if (timerCount == NOT_STARTED) { // if time not started:
+      if (abs(capacitance - old_capacitance) < CAP_STATIONARY) { // if in range:
         /* save the initial segment we are in: */
-        first_touch = checkTouch(converted_val);
+        first_touch = checkTouch(capacitance);
         Serial.print("first_touch = ");
         Serial.println(first_touch);
-      
+
         Timer1.restart(); //start time at the beginning of new period
         timerCount = STARTED; //signal timer has been started but not finished counting
-        Serial.println("timer started!!!!!!!!!?!");
-        //          Serial.println(first_touch);
+        Serial.println("timer started");
       }
     }
     else if (timerCount == STARTED) { /*the timer has been started and we are out of stationary range*/
-      // if (abs(converted_val - first_touch) > CAP_STATIONARY) {
-      if (checkTouch(converted_val) != first_touch) {
-        Serial.print("timer stopped???");
-        //          Serial.println(old_converted_val);
-        //          Serial.println(converted_val);
-
-        /*stop counting*/
-        Timer1.stop();
-        /*reset the timer*/
+      if (checkTouch(capacitance) != first_touch) {
+        Serial.print("timer stopped, out of constant range");
+        Timer1.stop(); // stop counting
         timerCount = NOT_STARTED; // internal timer count is reset when time is started again
       }
     }
   }
   else { /* either there is no touch, we have faded away, or we have finished counting and still need to fade */
     if (faded == true) { /*we have already faded pwm away, so the pwm is zero*/
-      //      if(abs(converted_val - old_converted_val) > CAP_STATIONARY) { // if we are outside of what we consider a "constant touch"
-      //        Serial.print("faded, first_touch = ");
       Serial.print(first_touch);
-      if (checkTouch(converted_val) != first_touch || (converted_val < baseline + cap_touch)) {
+      if (checkTouch(capacitance) != first_touch || (capacitance < baseline + cap_touch)) {
         //revert to using regular pwm:
-        /*reset timer count*/
-        timerCount = NOT_STARTED;
+        timerCount = NOT_STARTED; // reset timer flag
         /*revert to using regular pwm*/
         faded = false;
         Serial.println("breaking out of fade");
       }
-      /*else keep fadeaway*/
-      pwm = 0;
+      pwm = 0; // otherwise, keep the pwm "faded" away
     }
     else if (timerCount == STARTED) { /*the timer has been started and we are out of stationary range*/
-      Serial.print("timer stopped?????????????????? ");
-      /*stop counting*/
-      Timer1.stop();
-      /*reset the timer*/
-      timerCount = NOT_STARTED; // internal timer count is reset when time is started again
+      Serial.print("timer stopped, no touch detected");
+      Timer1.stop(); // stop the timer
+      timerCount = NOT_STARTED; // reset timer flag, internal timer count is reset when time is started again
     }
     else if (timerCount == FINISHED) { /*timer has finished counting 4s (and we have not faded yet)*/
-      /* start fadeaway */
       Serial.println("timer up, beginning to fade");
-      segFade();
+      segFade(); // begin decreasing the pwm
     }
     /*else there is no touch*/
   }
 }
 
-/*
-   timerISR - goes off each time the timer overflows
+/* Function: timerIsr
+   "Outputs": timerCount
+   Purpose: sets timerCount to FINISHED to let the main program know that timer has counted up to CONST_TIME
 */
 void timerIsr() // if timerISR gets triggered mistakenly, can add a variable count
 {
@@ -403,8 +412,17 @@ void timerIsr() // if timerISR gets triggered mistakenly, can add a variable cou
   Timer1.stop(); // stop the timer from counting any further
 }
 
+/*  Function: checkTouch
+    Input: capVal
+    Output: one of three constant values representing different touch intensities
+    Purpose: Takes in a capacitance value capVal and maps it to an intensity segment called either LIGHT_TOUCH, MED_TOUCH, or HARD_TOUCH
+*/
+
 float checkTouch(float capVal) {
-  if (capVal <= baseline + cap_touch + MED_TOUCH) {
+  if(capVal <= baseline + cap_touch) {
+    return NO_TOUCH; 
+  }
+  else if (capVal <= baseline + cap_touch + MED_TOUCH) {
     return LIGHT_TOUCH;
   }
   else if (capVal <= baseline + cap_touch + HARD_TOUCH) {
@@ -415,14 +433,18 @@ float checkTouch(float capVal) {
   }
 }
 
-/*
-   fadeaway funct - controls pwm output until it is zero
+/* Function: linearFade
+   "Inputs": capacitance, first_touch
+   "Outputs": pwm, timer_count
+   Purpose: Slowly decreases the pwm to zero, and continuously calls sendpwm() to output the new pwm without revisiting the main loop.
+   Breaks if constant touch is no longer detected, or when pwm equals zero. Function is called when the timer set in linearFadeTimer
+   successfully counts up to CONST_TIME.
 */
 void linearFade() {
   while (1) {
     readCapacitance();
 
-    if ((abs(converted_val - first_touch) > CAP_STATIONARY)) {
+    if ((abs(capacitance - first_touch) > CAP_STATIONARY)) {
       faded = false;
       timerCount = NOT_STARTED;
       break; // if we are out of stationary range or we need to recalibrate
@@ -435,26 +457,19 @@ void linearFade() {
     }
     else {// else we must be in range and outputtedPwm is positive (pwm will never be negative)
       pwm -= 2;
-
-      // ** either transmit the pwm here or make it the new pwm
-      if (isTransmitter == false) {
-        analogWrite(vibpin1, pwm);
-        Serial.println(pwm);
-      }
-      else {
-        Serial.println(pwm);
-        sendpwm();
-      }
+      Serial.println(pwm); // print the new pwm
+      sendpwm(); // transmit or send pwm to pin
     }
   }
 }
-void segFade() {
+void segFade() { /**************************************** newest version of this function as of 9:15am*/
   while (1) {
     readCapacitance();
+    delay(1000); // make readout info readable     
 
-    if ((checkTouch(converted_val) != first_touch )) {
+    if ((checkTouch(capacitance) != first_touch )) {
       timerCount = NOT_STARTED;
-      Serial.println("big noice");
+      Serial.println("timer stopped, touch out of range");
       break; // if we are out of stationary range or we need to recalibrate
     }
     else if (pwm <= 0) {
@@ -465,25 +480,17 @@ void segFade() {
     }
     else {// else we must be in range and outputtedPwm is positive (pwm will never be negative)
       pwm -= 2;
-
-      // ** either transmit the pwm here or make it the new pwm
-      if (isTransmitter == false) {
-        analogWrite(vibpin1, pwm);
-        Serial.print(pwm);
-        Serial.print(" current_touch =");
-        Serial.println(checkTouch(converted_val));
-      }
-      else {
-        Serial.println(pwm);
-        sendpwm();
-      }
+      Serial.println(pwm); // print the new pwm
+      sendpwm(); // transmit or send pwm to pin
     }
   }
 }
 
 
-/*
-    min/max/baseline capacitance finding function
+/* Function: findStartVals
+   "Outputs": baseline, cap_touch
+   Purpose: Reads NUM_READINGS capacitnace values and calculates the baseline capacitance (the average of the readings) and cap_touch (the minimum
+   difference in capacitance from the baseline needed to output a nonzero pwm)
 */
 
 void findStartVals()
@@ -536,7 +543,10 @@ void findStartVals()
 }
 
 /*
-   maps a number x from the range [in_min to in_max] and maps it into the range [out_min, out_max]
+   Function: myMap
+   Inputs: x, in_min, in_max, out_min, out_max
+   Outputs: a scaled version of x (int)
+   Purpose: Maps a number x from the range [in_min to in_max] and maps it into the range [out_min, out_max]
 */
 int myMap(float x, float in_min, float in_max, float out_min, float out_max)
 {
