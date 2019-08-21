@@ -12,10 +12,7 @@
  *******************************/
 /*
    - add something that recalibrates after high pressures ?
-   - arduino pins can only sink max 40mA
-   - digital write high is 5V
 
-   - if a pin is set to an input (default), then internal pullup resistor is activated (desirable for reading inputs, as
    - do some kind of hard pressure test to see how much the displacement (capacitance) changes at rest to help with recalibration
    - smoothing funct so timer doesn't start/stop constantly on the borderline of a new pwm segment
 
@@ -41,9 +38,9 @@
 #include <Servo.h>
 
 /********** USER DEFINED CONSTANTS ************/
-const int isTransmitter = true; // set as true if want to act as transmitter, false if want to output vibration on vibpin (pin 11)
-const int isPwmLinear = false; // set as true if want pwm to change linearly with changes in capacitance, false if want pwm to remain within 4 discrete values
-const int isOutputVib = false; // set as true if want output to be pwm into vibration motor, false if want output to be servo angle
+const bool isTransmitter = true; // set as true if want to act as transmitter, false if want to output vibration on vibpin (pin 11)
+const bool isPwmLinear = false; // set as true if want pwm to change linearly with changes in capacitance, false if want pwm to remain within 4 discrete values
+const bool isOutputVib = true; // set as true if want output to be pwm into vibration motor, false if want output to be servo angle
 
 /* linear pwm constants */
 #define PWM_HIGH 255 // the highest pwm outputted
@@ -101,8 +98,8 @@ volatile int timerCount = NOT_STARTED;
 RF24 radio(5, 6); //*********** changed from vibration code since servo.h uses pins 9, 10
 const uint64_t pipes[2] = { 0xF0F0F0F0E1LL, 0xF0F0F0F0D2LL };
 
-// declare servo object
-Servo armServo;
+Servo armServo; // declare servo object
+
 
 
 /* ______FUNCTION TO INITIALIZE ARDUINO______ */
@@ -147,9 +144,9 @@ void setup()
   //  attachInterrupt(digitalPinToInterrupt(2), Button_ISR, FALLING); // pin will go high to low when interrupt
 
   // ** Enable timer interrupt
-  //  Timer1.initialize(CONST_TIME); // sets a timer of length CONST_TIME microseconds
-  //  Timer1.attachInterrupt(timerIsr); // attaches the timer service routine
-  //  Timer1.stop();
+  Timer1.initialize(CONST_TIME); // sets a timer of length CONST_TIME microseconds
+  Timer1.attachInterrupt(timerIsr); // attaches the timer service routine
+  Timer1.stop();
 
   //** Set up RF transmission
   if (isTransmitter == true) {
@@ -164,8 +161,10 @@ void setup()
   capacitance = baseline;   // initialize capacitance (so old_capacitance has a proper value in the first run of loop())
   timerCount = NOT_STARTED; // make sure timer is not started
 
+if(isOutputVib == false) { // initialize servo ONLY if using servo
   armServo.attach(servoSignal);// attach servo to pin 9
   armServo.write(90); // set initial servo value to not moving
+}
 
   digitalWrite(LED_BUILTIN, LOW);   //signal the end of calibration
 }
@@ -177,7 +176,7 @@ void loop()
   old_capacitance = capacitance; // save the old capacitance
   readCapacitance(); // new capacitance is stored in global variable capacitance
   findpwm(); // find new pwm according to new capacitance
-//  Serial.println(pwm);
+  Serial.println(pwm);
   if (isOutputVib == true) {
     fadeawayTimer(); // check if need to fade (if using vibration output)
   }
@@ -254,18 +253,25 @@ void sendOutput()
 
     if (isOutputVib == true) {
       ok = radio.write( &pwm, sizeof(int) );
+      if (ok) {
+        printf("ok...Sent ");
+        Serial.println(pwm);
+      }
+      else {
+        printf("failed.\n\r");
+      }
     }
     else {
       ok = radio.write( &moveDistance, sizeof(moveDistance) );
+      if (ok) {
+        printf("ok...Sent ");
+        Serial.print(pwm);
+      }
+      else {
+        printf("failed.\n\r");
+      }
     }
-    if (ok) {
-      printf("ok...Sent ");
-      Serial.print(moveDistance);
-      Serial.println(" ");
-    }
-    else {
-      printf("failed.\n\r");
-    }
+
     radio.startListening();  // switch to listening role
 
     // Wait here until we get a response, or timeout (250ms)
@@ -292,7 +298,7 @@ void sendOutput()
     }
 
     // wait a tad before trying again
-    delay(1000);
+    delay(50);
   }
 }
 
@@ -375,6 +381,18 @@ void fadeawayTimer()
   }
 }
 
+
+/* Function: timerIsr
+   "Outputs": timerCount
+   Purpose: sets timerCount to FINISHED to let the main program know that timer has counted up to CONST_TIME
+*/
+void timerIsr() // if timerISR gets triggered mistakenly, can add a variable count
+{
+  Serial.println("timer finished");
+  timerCount = FINISHED; //let the main program know the timer has gone off
+  Timer1.stop(); // stop the timer from counting any further
+}
+
 /*  Function: checkTouch
     Input: capVal
     Output: one of three constant values representing different touch intensities
@@ -382,7 +400,10 @@ void fadeawayTimer()
 */
 
 float checkTouch(float capVal) {
-  if (capVal <= baseline + cap_touch + MED_TOUCH) {
+  if(capVal <= baseline + cap_touch) {
+    return NO_TOUCH; 
+  }
+  else if (capVal <= baseline + cap_touch + MED_TOUCH) {
     return LIGHT_TOUCH;
   }
   else if (capVal <= baseline + cap_touch + HARD_TOUCH) {
@@ -538,6 +559,7 @@ void segFade() {
 
     if ((checkTouch(capacitance) != first_touch )) {
       timerCount = NOT_STARTED;
+      Serial.println("timer stopped, touch out of range");
       break; // if we are out of stationary range or we need to recalibrate
     }
     else if (pwm <= 0) {
