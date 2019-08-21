@@ -465,8 +465,6 @@ void linearFade() {
 void segFade() { /**************************************** newest version of this function as of 9:15am*/
   while (1) {
     readCapacitance();
-    delay(1000); // make readout info readable     
-
     if ((checkTouch(capacitance) != first_touch )) {
       timerCount = NOT_STARTED;
       Serial.println("timer stopped, touch out of range");
