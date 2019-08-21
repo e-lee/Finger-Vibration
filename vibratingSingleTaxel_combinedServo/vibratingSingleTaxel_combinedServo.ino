@@ -38,7 +38,7 @@
 #include <Servo.h>
 
 /********** USER DEFINED CONSTANTS ************/
-const bool isTransmitter = true; // set as true if want to act as transmitter, false if want to output vibration on vibpin (pin 11)
+const bool isTransmitter = false; // set as true if want to act as transmitter, false if want to output vibration on vibpin (pin 11)
 const bool isPwmLinear = false; // set as true if want pwm to change linearly with changes in capacitance, false if want pwm to remain within 4 discrete values
 const bool isOutputVib = true; // set as true if want output to be pwm into vibration motor, false if want output to be servo angle
 
@@ -221,6 +221,8 @@ void setArmPosition()
 
 void sendOutput()
 {
+  float sent_pwm = pwm; 
+  
   if (isTransmitter == false) {
     if (isOutputVib == true) {
       analogWrite(vibpin1, pwm); //  if we don't need to transmit pwm, write pwm to vibpin
@@ -252,10 +254,10 @@ void sendOutput()
     radio.stopListening(); // Stop listening for a response so we can send a message
 
     if (isOutputVib == true) {
-      ok = radio.write( &pwm, sizeof(int) );
+      ok = radio.write( &sent_pwm, sizeof(sent_pwm) );
       if (ok) {
         printf("ok...Sent ");
-        Serial.println(pwm);
+        Serial.println(sent_pwm);
       }
       else {
         printf("failed.\n\r");
@@ -289,8 +291,8 @@ void sendOutput()
     else
     {
       // Grab the response, compare, and send to debugging spew
-      int response;
-      radio.read( &response, sizeof(int) );
+      float response;
+      radio.read( &response, sizeof(float) );
 
       // Spew it
       Serial.print("Got response ");

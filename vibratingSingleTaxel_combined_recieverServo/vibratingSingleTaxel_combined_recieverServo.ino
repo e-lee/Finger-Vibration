@@ -26,6 +26,10 @@
 #include "printf.h"
 #include <Servo.h>
 
+/*****************USER DEFINED CONSTANTS*******************/
+const bool isOutputVib = false; // set as true if want output to be pwm into vibration motor, false if want output to be servo angle
+
+
 //
 // Hardware configuration
 //
@@ -62,7 +66,7 @@ Servo armServo;
 
 /* state pin names */
 const int servoSignal = 9;
-const int vibpin1 = 11; 
+const int vibpin1 = 3;
 
 void setup(void)
 {
@@ -70,8 +74,8 @@ void setup(void)
   /* configure pins */
   pinMode(vibpin1, OUTPUT);
 
-//  armServo.attach(servoSignal);// attach servo to pin 9
-//  armServo.write(90); // set initial servo value to not moving
+  //  armServo.attach(servoSignal);// attach servo to pin 9
+  //  armServo.write(90); // set initial servo value to not moving
 
   //
   // Print preamble
@@ -125,12 +129,18 @@ void loop(void)
       done = radio.read( &output, sizeof(float) );
 
       // Spew it
-//      printf("Got payload %lu...", output);
+      //      printf("Got payload %lu...", output);
       Serial.print("Got payload ");
       Serial.println(output);
-      /* control servo (or output pwm) */
-      // analogWrite(5, (int)output);
-
+      // Delay just a little bit to let the other unit
+      // make the transition to receiver
+      delay(20);
+    }
+    /* control servo (or output pwm) */
+    if (isOutputVib == true) {
+      analogWrite(vibpin1, (int)output);
+    }
+    else {
       armServo.attach(servoSignal);
       if (output < 0) {
         armServo.write(170);
@@ -148,12 +158,8 @@ void loop(void)
 
       armServo.write(90); // stop moving the arm
       armServo.detach();
-
-
-      // Delay just a little bit to let the other unit
-      // make the transition to receiver
-      delay(20);
     }
+
 
     // First, stop listening so we can talk
     radio.stopListening();
