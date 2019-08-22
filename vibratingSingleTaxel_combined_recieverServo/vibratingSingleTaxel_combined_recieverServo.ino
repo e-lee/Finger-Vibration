@@ -121,12 +121,12 @@ void loop(void)
   if ( radio.available() )
   {
     // Dump the payloads until we've gotten everything
-    float output;
+    int output;
     bool done = false;
     while (!done)
     {
       // Fetch the payload, and see if this was the last one.
-      done = radio.read( &output, sizeof(float) );
+      done = radio.read( &output, sizeof(int) );
 
       // Spew it
       //      printf("Got payload %lu...", output);
@@ -138,7 +138,7 @@ void loop(void)
     }
     /* control servo (or output pwm) */
     if (isOutputVib == true) {
-      analogWrite(vibpin1, (int)output);
+      analogWrite(vibpin1, output);
     }
     else {
       armServo.attach(servoSignal);
@@ -165,7 +165,7 @@ void loop(void)
     radio.stopListening();
 
     // Send the final one back.
-    radio.write( &output, sizeof(unsigned long) );
+    radio.write( &output, sizeof(int) );
     printf("Sent response.\n\r");
 
 
