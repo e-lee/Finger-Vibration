@@ -58,12 +58,12 @@ const bool isOutputVib = false; // set as true if want output to be pwm into vib
 /* arm positions */
 //#define POS_0 0
 //#define POS_1 1
-//#define POS_2 2 
+//#define POS_2 2
 //#define POS_3 3
-typedef enum {no_touch = 0, light_touch = 1, med_touch = 2, hard_touch = 3} armPos; 
+typedef enum {no_touch = 0, light_touch = 1, med_touch = 2, hard_touch = 3} armPos;
 
 /* define timer flags */
-typedef enum {not_started, started, finished} timer_flags; 
+typedef enum {not_started, started, finished} timer_flags;
 
 /* constants for CDC */
 #define I2C_ADDRESS  0x48           // 0x90 shift one to the right
@@ -161,15 +161,20 @@ void setup()
     radio.openWritingPipe(pipes[0]); // open pipes for transmission
     radio.openReadingPipe(1, pipes[1]);
     radio.startListening();
+
+    if (isOutputVib == true)
+      while (!sendOutput(8888)); // send unique number to signal output is vibration
+    else
+      while (!sendOutput(9999)); // otherwise send other unique number is servo
   }
 
   capacitance = baseline;   // initialize capacitance (so old_capacitance has a proper value in the first run of loop())
   timerStatus = not_started; // make sure timer is not started
 
-if(isOutputVib == false) { // initialize servo ONLY if using servo
-  armServo.attach(servoSignal);// attach servo to pin 9
-  armServo.write(90); // set initial servo value to not moving
-}
+  if (isOutputVib == false) { // initialize servo ONLY if using servo
+    armServo.attach(servoSignal);// attach servo to pin 9
+    armServo.write(90); // set initial servo value to not moving
+  }
 
   digitalWrite(LED_BUILTIN, LOW);   //signal the end of calibration
 }
@@ -178,26 +183,28 @@ if(isOutputVib == false) { // initialize servo ONLY if using servo
 /* ______MAIN PROGRAM______ */
 void loop()
 {
+  delay(300);
   old_capacitance = capacitance; // save the old capacitance
   readCapacitance(); // new capacitance is stored in global variable capacitance
   findpwm(); // find new pwm according to new capacitance
-//  Serial.println(pwm);
+  //  Serial.println(pwm);
   if (isOutputVib == true) {
     fadeawayTimer(); // check if need to fade (if using vibration output)
+    sendOutput(pwm); // check if supposed to act as transmitter, then send pwm accordingly
   }
   else {
     setArmPosition(); // otherwise, set the servo armPosition according to the new capacitance
+    sendOutput(moveDistance); // check if supposed to act as transmitter, then send servo position accordingly
   }
-  sendOutput(); // check if supposed to act as transmitter, then send pwm accordingly
 }
 
 void setArmPosition()
 {
   int newArmPosition;
 
-  // determine current arm position  
+  // determine current arm position
   newArmPosition = checkTouch(capacitance);
-  
+
   moveDistance = armPosition - newArmPosition; // if e.g. newArmPosition is further down than armPosition, moveDistance will be positive
   Serial.print("pwm = ");
   Serial.print(pwm);
@@ -210,28 +217,29 @@ void setArmPosition()
 }
 
 /* Function: sendOutput
-   "Inputs": pwm, isTransmitter
+   Input: outputSignal - holds either pwm or moveDistance depending on isTransmitter
+   Output: returns 1 if send and receive successful, returns 0 otherwise
    Purpose: checks the state of isTransmitter and either writes the calculated pwm to vibpin1 or transmits it to another microcontroller using RF transmission
 */
 
-void sendOutput()
-{  
+int sendOutput(int outputSignal)
+{
   if (isTransmitter == false) {
     if (isOutputVib == true) {
-      analogWrite(vibpin1, pwm); //  if we don't need to transmit pwm, write pwm to vibpin
+      analogWrite(vibpin1, outputSignal); //  if we don't need to transmit pwm, write pwm to vibpin
     }
     else {
       /* determine how far the arm should go */
       armServo.attach(servoSignal);
-      if (moveDistance < 0) {
+      if (outputSignal < 0) {
         armServo.write(170);
         Serial.println("arm is moving down");
-        delay(30 * abs(moveDistance));
+        delay(30 * abs(outputSignal));
       }
-      else if (moveDistance > 0) {
+      else if (outputSignal > 0) {
         armServo.write(0);
         Serial.println("arm is moving up");
-        delay(30 * moveDistance);
+        delay(30 * outputSignal);
       }
       else {// otherwise do nothing
         Serial.println("don't move arm");
@@ -240,33 +248,22 @@ void sendOutput()
       armServo.write(90); // stop moving the arm
       armServo.detach();
     }
+    return 1; // assume non transmitter codes submit successfully
   }
   else {
     bool ok;
     // transmit pwm to other microcontroller
     radio.stopListening(); // Stop listening for a response so we can send a message
 
-    if (isOutputVib == true) {
-      ok = radio.write( &pwm, sizeof(int) );
-      if (ok) {
-        printf("ok...Sent ");
-        Serial.println(pwm);
-      }
-      else {
-        printf(" failed.\n\r");
-      }
+    ok = radio.write( &outputSignal, sizeof(int) );
+    if (ok) {
+      printf("ok...Sent ");
+      Serial.print(outputSignal);
     }
     else {
-      ok = radio.write( &moveDistance, sizeof(int) );
-      if (ok) {
-        printf("ok...Sent ");
-        Serial.print(moveDistance);
-      }
-      else {
-        printf(" failed.\n\r");
-      }
+      printf(" failed.\n\r");
+      return 0; // don't listen back for message if send fails
     }
-
     radio.startListening();  // switch to listening role
 
     // Wait here until we get a response, or timeout (250ms)
@@ -280,6 +277,7 @@ void sendOutput()
     if ( timeout )
     {
       printf(" Failed, response timed out.\n\r");
+      return 0; // if timeout happens before hear response, assume transmission failed
     }
     else
     {
@@ -288,8 +286,9 @@ void sendOutput()
       radio.read( &response, sizeof(int) );
 
       // Spew it
-      Serial.print("Got response ");
+      Serial.print(" Got response ");
       Serial.println(response);
+      return 1;
     }
 
     // wait a tad before trying again
@@ -305,7 +304,7 @@ void sendOutput()
 void findpwm()
 {
   float current_touch = checkTouch(capacitance);
-  
+
   if (isPwmLinear == true) {
     /* linear pwm mapping */
     //  map capacitance to pwm (make the lowest possible vibration pwm 80):
@@ -321,7 +320,7 @@ void findpwm()
   else {
     /* segmented vibration mapping */
     if (current_touch == no_touch) {
-      pwm = 0; 
+      pwm = 0;
     }
     else if (current_touch == light_touch) {
       pwm = 90;
@@ -391,8 +390,8 @@ void timerIsr() // if timerISR gets triggered mistakenly, can add a variable cou
 */
 
 float checkTouch(float capVal) {
-  if(capVal <= baseline + cap_touch) {
-    return no_touch; 
+  if (capVal <= baseline + cap_touch) {
+    return no_touch;
   }
   else if (capVal <= baseline + cap_touch + MED_TOUCH_CAP) {
     return light_touch;
@@ -539,7 +538,7 @@ void linearFade() {
     else {// else we must be in range and outputtedPwm is positive (pwm will never be negative)
       pwm -= 2;
       Serial.println(pwm); // print the new pwm
-      sendOutput(); // transmit or send pwm to pin
+      sendOutput(pwm); // transmit or send pwm to pin
     }
   }
 }
@@ -562,7 +561,7 @@ void segFade() {
     else {// else we must be in range and outputtedPwm is positive (pwm will never be negative)
       pwm -= 2;
       Serial.println(pwm); // print the new pwm
-      sendOutput(); // transmit or send pwm to pin
+      sendOutput(pwm); // transmit or send pwm to pin
     }
   }
 }

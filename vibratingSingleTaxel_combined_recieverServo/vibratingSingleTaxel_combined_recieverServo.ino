@@ -26,9 +26,8 @@
 #include "printf.h"
 #include <Servo.h>
 
-/*****************USER DEFINED CONSTANTS*******************/
-const bool isOutputVib = false; // set as true if want output to be pwm into vibration motor, false if want output to be servo angle
-
+bool isOutputVib = false; // set as true if want output to be pwm into vibration motor, false if want output to be servo angle
+int output; 
 
 //
 // Hardware configuration
@@ -112,16 +111,39 @@ void setup(void)
   //
 
   radio.printDetails();
+
+    // see whether receiver is in vibration or servo mode
+  while (1) {
+    receiveOutput();
+   if ((output == 8888) || (output == 9999)) 
+    break;
+   
+    Serial.println("while loop continues, output is ");
+    Serial.println(output);
+  }
+
+//  if (output == 8888) {
+//    isOutputVib = true;
+//    Serial.println("Output is vibration");
+//  }
+//  else {
+//    isOutputVib = false;
+//    Serial.println("Output is servo");
+//  }
+  output = 0;
 }
 
 void loop(void)
 {
+  receiveOutput();
+  sendOutput();
+}
 
+void receiveOutput() {
   // if there is data ready
   if ( radio.available() )
   {
     // Dump the payloads until we've gotten everything
-    int output;
     bool done = false;
     while (!done)
     {
@@ -136,32 +158,7 @@ void loop(void)
       // make the transition to receiver
       delay(20);
     }
-    /* control servo (or output pwm) */
-    if (isOutputVib == true) {
-      analogWrite(vibpin1, output);
-    }
-    else {
-      armServo.attach(servoSignal);
-      if (output < 0) {
-        armServo.write(170);
-        Serial.println("arm is moving down");
-        delay(30 * abs(output));
-      }
-      else if (output > 0) {
-        armServo.write(0);
-        Serial.println("arm is moving up");
-        delay(30 * output);
-      }
-      else {// otherwise do nothing
-        Serial.println("don't move arm");
-      }
-
-      armServo.write(90); // stop moving the arm
-      armServo.detach();
-    }
-
-
-    // First, stop listening so we can talk
+      // First, stop listening so we can talk
     radio.stopListening();
 
     // Send the final one back.
@@ -173,4 +170,29 @@ void loop(void)
     radio.startListening();
   }
 }
-// vim:cin:ai:sts=2 sw=2 ft=cpp
+
+void sendOutput() {
+   if (isOutputVib == true) {
+    analogWrite(vibpin1, output);
+  }
+  else {
+    armServo.attach(servoSignal);
+    if (output < 0) {
+      armServo.write(170);
+      Serial.println("arm is moving down");
+      delay(10 * abs(output));
+    }
+    else if (output > 0) {
+      armServo.write(0);
+      Serial.println("arm is moving up");
+      delay(10 * output);
+    }
+    else {// otherwise do nothing
+      Serial.println("don't move arm");
+    }
+
+    armServo.write(90); // stop moving the arm
+    armServo.detach();
+  }
+}
+    // vim:cin:ai:sts=2 sw=2 ft=cpp
