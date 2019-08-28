@@ -1,30 +1,40 @@
 /*******************************
    The following MUST be true for this code to work:
-   
-   1. in "TimerOne.h" that TCNT1 = 1 (not TCNT1 = 0) in the TimerOne library files
+
+   1. in "TimerOne.h", TCNT1 = 1 (not TCNT1 = 0) in the TimerOne library files
       otherwise, interrupt will trigger immediately after it is enabled/started
 
-   2. if using Piksey Pico board, add "|| defined (__AVR_ATmega328PB__)" to line 94 in "known_16bit_timers.h" in the TimerOne library files
+   2. if using Piksey Pico board (uses mcu called atmega328pb), add "|| defined (__AVR_ATmega328PB__)" to line 94 in "known_16bit_timers.h" in the TimerOne library files
       otherwise, the TimerOne library will not be able to recognize the board
 
- Other Important Notes:
- 
-   ** if using the Piksey Pico board and there is some error in the debugging window when you try to upload saying "...Permission Denied",
-   try switching "Arduino AVR Boards" (under Tools->Board->Boards Manager) to version 1.6.22 
+   3. this code uses the ManiacBug version of the RF24 library -- don't use the Tmrh20 version without changing the radio code!
+  `
+  Other Important Notes:
 
-   **the TimerOne and Servo Libraries both use the built-in harware timer called timer1. This means that in this version of the code, trying to activate 
+
+   ** if using the Piksey Pico board and there is some error in the debugging window when you try to upload saying "...Permission Denied",
+   try switching "Arduino AVR Boards" (under Tools -> Board -> Boards Manager) to version 1.6.22.
+
+   ** the TimerOne and Servo Libraries both use the built-in harware timer called timer1. This means that in this version of the code, trying to activate
    vibrational output (the fadeaway function uses timer1) and the servo at the same time may yield unexpected results
 
-   **The inclusion of the <Servo.h> library (used to control the servo) or the usage of the <TimerOne.h> library (both are used in this code)
-   means that the pins 9, 10 are unavailable for use.  
+   ** The inclusion of the <Servo.h> library (used to control the servo) or the usage of the <TimerOne.h> library (both are used in this code)
+   means that the pins 9, 10 are unavailable for use.
+
+   ** Sometimes the rectangular shaped micro USB cord doesn't let you upload code to the piksey microcontroller. I'm not sure why this is,
+   but using a different cord can fix the problem.
+
+   ** All the radio code is based off of an rf24 example called "GettingStarted". if you have the rf24 library installed, you can access this file  
+   * under File -> Examples -> RF24 -> GettingStarted.
+   *
 
  *******************************/
 
-  /* Author: Emily Lee
-   Date: August 2019
-   Purpose: Reads capacitance from AD7746 CDC and calculates a corresponding pwm (to be outputted to a vibration motor) or servo position. Optionally, this pwm can be
-   transmitted to another microcontroller using nrF24l01+ modules. These features, as well as touch sensitivity, can be controlled with user-defined variables.
-   Email: emilylee.email@gmail.com
+/* Author: Emily Lee
+  Date: August 2019
+  Purpose: Reads capacitance from AD7746 CDC and calculates a corresponding pwm (to be outputted to a vibration motor) or servo position. Optionally, this pwm can be
+  transmitted to another microcontroller using nrF24l01+ modules. These features, as well as touch sensitivity, can be controlled with user-defined variables.
+  Email: emilylee.email@gmail.com
 */
 
 #include <SPI.h>
@@ -37,23 +47,31 @@
 
 /********** USER DEFINED CONSTANTS ************/
 const bool isTransmitter = true; // set as true if want to act as transmitter, false if want to output vibration on vibpin (pin 11)
-const bool isPwmLinear = false; // set as true if want pwm to change linearly with changes in capacitance, false if want pwm to remain within 4 discrete values
-const bool isOutputVib = true; // set as true if want output to be pwm into vibration motor, false if want output to be servo angle
+const bool isOutputLinear = true; // set as true if want output to change linearly with changes in capacitance, false if want output to remain within 4 discrete values
+const bool isOutputVib = false; // set as true if want output to be pwm into vibration motor, false if want output to be servo angle
 
 /* linear pwm constants */
 #define PWM_HIGH 255 // the highest pwm outputted
 #define PWM_LOW 90 // the lowest pwm outputted (if a pwm less than PWM_LOW is calculated, pwm outputted will be 0)
 #define CAP_RANGE 0.8 // the range of capacitance (pF) between pwm = PWM_LOW and pwm = PWM_HIGH
 
-/* segmented pwm constants */
+/* linear servo constants*/
+#define POS_HIGH 24
+#define POS_LOW 0
+
+/* segmented cap constants */
 #define MED_TOUCH_CAP 0.3 // the minimum amount of capacitance above baseline + cap_touch for a touch to be considered a "medium touch"
 #define HARD_TOUCH_CAP 0.6 // the minimum amount of capacitance above baseline + cap_touch for a touch to be considered a "hard touch"
 
 #define CAP_STATIONARY 0.2 // range of values cap can oscillate between to be considered "constant"
 #define CONST_TIME 4000000 // the minimum time (in microseconds) a constant touch has to be held to trigger pwm fade 
-/**********************************************/
 
-/* arm positions */
+
+/**********************************************/
+//changing arm position values might accidentally change the vibration output too
+//just make sure you test that again
+
+/* constants for kinds of touches */
 typedef enum {no_touch = 0, light_touch = 1, med_touch = 2, hard_touch = 3} armPos;
 
 /* define timer flags */
@@ -77,7 +95,7 @@ typedef enum {not_started, started, finished} timer_flags;
 
 /* pin names */
 const int vibpin1 = 11; // the pin at which the calculated pwm is outputted
-const int servoPower = 3;
+const int cdcPower = 3;
 const int servoSignal = 9;
 
 /* global variables */
@@ -86,7 +104,7 @@ float cap_touch = 0;
 float capacitance = 0;
 float old_capacitance = 0;
 float first_touch = 0;
-int moveDistance = 0;
+int servoArmPos = 0;
 int pwm = 0;
 boolean faded = false;
 
@@ -98,7 +116,7 @@ armPos armPosition = no_touch;
 volatile boolean needRecalibrate = false;
 
 // declare global variables for NEW rf transmission
-RF24 radio(5, 6); //*********** changed from vibration code since servo.h uses pins 9, 10
+RF24 radio(5, 6); // 5 is CE, 6 is CSN
 const uint64_t pipes[2] = { 0xF0F0F0F0E1LL, 0xF0F0F0F0D2LL };
 
 Servo armServo; // declare servo object
@@ -111,9 +129,9 @@ void setup()
   // ** Set pin modes
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(vibpin1, OUTPUT);
-  pinMode(servoPower, OUTPUT);
+  pinMode(cdcPower, OUTPUT);
 
-  digitalWrite(servoPower, HIGH); // power the servo
+  digitalWrite(cdcPower, HIGH); // power the servo
 
   digitalWrite(LED_BUILTIN, HIGH); //signal the start of calibration
 
@@ -146,10 +164,12 @@ void setup()
   //** Enable interrupt on pin 2
   //  attachInterrupt(digitalPinToInterrupt(2), Button_ISR, FALLING); // pin will go high to low when interrupt
 
-  // ** Enable timer interrupt
-  Timer1.initialize(CONST_TIME); // sets a timer of length CONST_TIME microseconds
-  Timer1.attachInterrupt(timerIsr); // attaches the timer service routine
-  Timer1.stop();
+  // ** Enable timer interrupt (ONLY if using vibration output)
+  if ( isOutputVib == true) {
+    Timer1.initialize(CONST_TIME); // sets a timer of length CONST_TIME microseconds
+    Timer1.attachInterrupt(timerIsr); // attaches the timer service routine
+    Timer1.stop();
+  }
 
   //** Set up RF transmission
   if (isTransmitter == true) {
@@ -172,7 +192,8 @@ void setup()
 
   if (isOutputVib == false) { // initialize servo ONLY if using servo
     armServo.attach(servoSignal);// attach servo to pin 9
-    armServo.write(90); // set initial servo value to not moving
+    armServo.write(0); // initialize servo position
+    delay(30);
   }
 
   digitalWrite(LED_BUILTIN, LOW);   //signal the end of calibration
@@ -184,7 +205,7 @@ void loop()
 {
   old_capacitance = capacitance; // save the old capacitance
   readCapacitance(); // new capacitance is stored in global variable capacitance
-  findpwm(); // find new pwm according to new capacitance
+    findpwm(); // find new pwm according to new capacitance
   //  Serial.println(pwm);
   if (isOutputVib == true) {
     fadeawayTimer(); // check if need to fade (if using vibration output)
@@ -192,30 +213,13 @@ void loop()
   }
   else {
     setArmPosition(); // otherwise, set the servo armPosition according to the new capacitance
-    sendOutput(moveDistance); // check if supposed to act as transmitter, then send servo position accordingly
+    sendOutput(servoArmPos); // check if supposed to act as transmitter, then send servo position accordingly
   }
 }
 
-void setArmPosition()
-{
-  int newArmPosition;
-
-  // determine current arm position
-  newArmPosition = checkTouch(capacitance);
-
-  moveDistance = armPosition - newArmPosition; // if e.g. newArmPosition is further down than armPosition, moveDistance will be positive
-  Serial.print("pwm = ");
-  Serial.print(pwm);
-  Serial.print(" armPosition = ");
-  Serial.print(armPosition);
-  Serial.print(" moveDistance = ");
-  Serial.println(moveDistance);
-
-  armPosition = newArmPosition; // save the new arm position
-}
 
 /* Function: sendOutput
-   Input: outputSignal - holds either pwm or moveDistance depending on isTransmitter
+   Input: outputSignal - holds either pwm or servoArmPos depending on isTransmitter
    Output: returns 1 if send and receive successful, returns 0 otherwise
    Purpose: checks the state of isTransmitter and either writes the calculated pwm to vibpin1 or transmits it to another microcontroller using RF transmission
 */
@@ -227,24 +231,11 @@ int sendOutput(int outputSignal)
       analogWrite(vibpin1, outputSignal); //  if we don't need to transmit pwm, write pwm to vibpin
     }
     else {
-      /* determine how far the arm should go */
-      armServo.attach(servoSignal);
-      if (outputSignal < 0) {
-        armServo.write(170);
-        Serial.println("arm is moving down");
-        delay(30 * abs(outputSignal));
-      }
-      else if (outputSignal > 0) {
-        armServo.write(0);
-        Serial.println("arm is moving up");
-        delay(30 * outputSignal);
-      }
-      else {// otherwise do nothing
-        Serial.println("don't move arm");
-      }
-
-      armServo.write(90); // stop moving the arm
-      armServo.detach();
+      /* write servo position output*/
+      armServo.write(outputSignal);
+      delay(25); // a delay is needed here, otherwise the servo will not respond to commands
+      Serial.print("arm position is: ");
+      Serial.println(outputSignal);
     }
     return 1; // assume non transmitter codes submit successfully
   }
@@ -253,6 +244,7 @@ int sendOutput(int outputSignal)
     // transmit pwm to other microcontroller
     radio.stopListening(); // Stop listening for a response so we can send a message
 
+    // type of variable sent must match type of variable read (i.e. if "output" is type int on the transmitter, it should also be int on the receiver)
     ok = radio.write( &outputSignal, sizeof(int) );
     if (ok) {
       printf("ok...Sent ");
@@ -287,7 +279,7 @@ int sendOutput(int outputSignal)
       Serial.print(" Got response ");
       Serial.println(response);
 
-      if(response != outputSignal)
+      if (response != outputSignal)
         return 0;
       else
         return 1;
@@ -298,16 +290,54 @@ int sendOutput(int outputSignal)
   }
 }
 
+/* Function: setArmPosition
+   "Inputs": capacitance
+   "outputs": new arm position
+   Purpose: checks isOutputLinear and either linearly maps capacitance to an arm position in the range [POS_LOW, POS_HIGH] or maps capacitance to one of three discrete values
+*/
+
+void setArmPosition()
+{
+  float current_touch = checkTouch(capacitance);
+
+  if (isOutputLinear == true) {
+    /* linear servo pos mapping */
+    //  map capacitance to pwm (make the lowest possible vibration pwm 80):
+    servoArmPos = myMap(capacitance, baseline + cap_touch , baseline + cap_touch + CAP_RANGE, POS_LOW, POS_HIGH);
+
+    if (capacitance < baseline + cap_touch) { //if capacitance is smaller than what we consider a touch...
+      servoArmPos = 0; //make the pwm zero percent
+    }
+    else if (capacitance > baseline + cap_touch + CAP_RANGE) { //if capacitance is over the "highest pressure"...
+      servoArmPos = POS_HIGH; //make the pwm 100 percent
+    }
+  }
+  else {
+    /* segmented servo pos mapping */
+    if (current_touch == no_touch) {
+      servoArmPos = 0;
+    }
+    else if (current_touch == light_touch) {
+      servoArmPos = 8;
+    }
+    else if (current_touch == med_touch) {
+      servoArmPos = 16;
+    }
+    else
+      servoArmPos = 24;
+  }
+}
+
 /* Function: findpwm
-   "Inputs": isPwmLinear, capacitance, baseline, cap_touch
+   "Inputs": isOutputLinear, capacitance, baseline, cap_touch
    "Outputs": pwm
-   Purpose: checks isPwmLinear and either linearly maps capacitance to a pwm in the range [PWM_LOW, PWM_HIGH] or maps capacitance to one of three discrete values
+   Purpose: checks isOutputLinear and either linearly maps capacitance to a pwm in the range [PWM_LOW, PWM_HIGH] or maps capacitance to one of three discrete values
 */
 void findpwm()
 {
   float current_touch = checkTouch(capacitance);
 
-  if (isPwmLinear == true) {
+  if (isOutputLinear == true) {
     /* linear pwm mapping */
     //  map capacitance to pwm (make the lowest possible vibration pwm 80):
     pwm = myMap(capacitance, baseline + cap_touch , baseline + cap_touch + CAP_RANGE, PWM_LOW, PWM_HIGH);
@@ -360,19 +390,18 @@ void readCapacitance()
 }
 
 /* Function: fadeawayTimer
-   Purpose: checks whether pwm should be linearly mapped or segmented by checking isPwmLinear and calls the appropriate fadeaway timer function.
+   Purpose: checks whether pwm should be linearly mapped or segmented by checking isOutputLinear and calls the appropriate fadeaway timer function.
 */
 
 void fadeawayTimer()
 {
-  if (isPwmLinear == true) {
+  if (isOutputLinear == true) {
     linearFadeTimer();
   }
   else {
     segFadeTimer();
   }
 }
-
 
 /* Function: timerIsr
    "Outputs": timerStatus

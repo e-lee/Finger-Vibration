@@ -1,7 +1,7 @@
 /* Author: Emily Lee
    Date: August 2019
-   Purpose: Reads incoming data from transmitting microcontroller and outputs either to be outputted to a vibration motor) or servo position. Optionally, this pwm can be
-   transmitted to another microcontroller using nrF24l01+ modules. These features, as well as touch sensitivity, can be controlled with user-defined variables.
+   Purpose: Reads incoming data from transmitting microcontroller and outputs this data (either pwm or servo position) onto the vibration motor
+   or a positional servo. Optionally, this pwm can be transmitted to another microcontroller using nrF24l01+ modules. These features, as well as touch sensitivity, can be controlled with user-defined variables.
    Email: emilylee.email@gmail.com
 */
 /* add something so if the transmitter
@@ -25,7 +25,7 @@ int output;
 
 // Set up nRF24L01 radio on SPI bus plus pins 5 & 6
 
-RF24 radio(5, 6); //CE, CSN
+RF24 radio(5, 6); //CE is 5, CSN is 6
 
 //
 // Topology
@@ -42,13 +42,13 @@ const uint64_t pipes[2] = { 0xF0F0F0F0E1LL, 0xF0F0F0F0D2LL };
 //
 
 // The various roles supported by this sketch
-typedef enum { role_ping_out = 1, role_pong_back } role_e;
+//typedef enum { role_ping_out = 1, role_pong_back } role_e;
 
 // The debug-friendly names of those roles
 const char* role_friendly_name[] = { "invalid", "Ping out", "Pong back"};
 
 // The role of the current running sketch
-role_e role = role_pong_back;
+//role_e role = role_pong_back;
 
 // declare servo object
 Servo armServo;
@@ -70,7 +70,7 @@ void setup(void)
   Serial.begin(9600);
   printf_begin();
   printf("\n\rRF24/examples/GettingStarted/\n\r");
-  printf("ROLE: %s\n\r", role_friendly_name[role]);
+//  printf("ROLE: %s\n\r", role_friendly_name[role]);
   printf("*** PRESS 'T' to begin transmitting to the other node\n\r");
 
   //
@@ -122,10 +122,10 @@ void receiveOutput() {
     while (!done)
     {
       // Fetch the payload, and see if this was the last one.
-      done = radio.read( &output, sizeof(int) );
-
+      
+      // type of variable read must match type of variable sent (i.e. if "output" is type int on the transmitter, it should also be int on the receiver)
+      done = radio.read( &output, sizeof(int) ); 
       // Spew it
-      //      printf("Got payload %lu...", output);
       Serial.print("Got payload ");
       Serial.println(output);
       // Delay just a little bit to let the other unit
@@ -150,40 +150,27 @@ void receiveOutput() {
 }
 
 /* Function: sendOutput
- *  "Inputs": output (either pwm or arm position)
- *  Purpose: Outputs pwm onto vibration motor or arm position onto servo depending on output type
- */
+    "Inputs": output (either pwm or arm position)
+    Purpose: Outputs pwm onto vibration motor or arm position onto servo depending on output type
+*/
 
 void sendOutput() {
   if (isOutputVib == true) {
     analogWrite(vibpin1, output);
   }
   else {
-    armServo.attach(servoSignal);
-    if (output < 0) {
-      armServo.write(170);
-      Serial.println("arm is moving down");
-      delay(30 * abs(output));
-    }
-    else if (output > 0) {
-      armServo.write(0);
-      Serial.println("arm is moving up");
-      delay(30 * output);
-    }
-    else {// otherwise do nothing
-      Serial.println("don't move arm");
-    }
-
-    armServo.write(90); // stop moving the arm
-    armServo.detach();
+    armServo.write(output);
+    delay(25); // a delay is needed here, otherwise the servo will not respond to commands
+    Serial.print("arm position is: ");
+    Serial.println(output);
   }
 }
 
 /* Function: checkOutput
- * "Inputs": output
- * Output: returns 1 if output type has been changed, 0 otherwise
- * Purpose: determines if output contains OUTPUT_VIB (signals output should be set to vibration) or OUTPUT_SERVO (output set to servo)
- */
+   "Inputs": output
+   Output: returns 1 if output type has been changed, 0 otherwise
+   Purpose: determines if output contains OUTPUT_VIB (signals output should be set to vibration) or OUTPUT_SERVO (output set to servo)
+*/
 
 int checkOutput() {
 
