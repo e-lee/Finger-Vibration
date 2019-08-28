@@ -1,21 +1,9 @@
-/*
-  Copyright (C) 2011 J. Coliz <maniacbug@ymail.com>
-
-  This program is free software; you can redistribute it and/or
-  modify it under the terms of the GNU General Public License
-  version 2 as published by the Free Software Foundation.
+/* Author: Emily Lee
+   Date: August 2019
+   Purpose: Reads incoming data from transmitting microcontroller and outputs either to be outputted to a vibration motor) or servo position. Optionally, this pwm can be
+   transmitted to another microcontroller using nrF24l01+ modules. These features, as well as touch sensitivity, can be controlled with user-defined variables.
+   Email: emilylee.email@gmail.com
 */
-
-/**
-   Example for Getting Started with nRF24L01+ radios.
-
-   This is an example of how to use the RF24 class.  Write this sketch to two
-   different nodes.  Put one of the nodes into 'transmit' mode by connecting
-   with the serial monitor and sending a 'T'.  The ping node sends the current
-   time to the pong node, which responds by sending the value back.  The ping
-   node can then see how long the whole cycle took.
-*/
-
 /* add something so if the transmitter
   doesn't hear back from the receiver, the pwm is set to zero (or should it
   be maintained?*/
@@ -26,16 +14,18 @@
 #include "printf.h"
 #include <Servo.h>
 
-bool isOutputVib = false; // set as true if want output to be pwm into vibration motor, false if want output to be servo angle
-bool changeFeedback = true;
+#define OUTPUT_VIB 8888
+#define OUTPUT_SERVO 9999
+
+bool isOutputVib = true; // output is servo by default
 int output;
 //
 // Hardware configuration
 //
 
-// Set up nRF24L01 radio on SPI bus plus pins 9 & 10
+// Set up nRF24L01 radio on SPI bus plus pins 5 & 6
 
-RF24 radio(5, 6);
+RF24 radio(5, 6); //CE, CSN
 
 //
 // Topology
@@ -73,9 +63,6 @@ void setup(void)
   /* configure pins */
   pinMode(vibpin1, OUTPUT);
 
-  armServo.attach(servoSignal);// attach servo to pin 9
-  armServo.write(90); // set initial servo value to not moving
-
   //
   // Print preamble
   //
@@ -111,31 +98,20 @@ void setup(void)
   //
 
   radio.printDetails();
-
-  // see whether receiver is in vibration or servo mode
-  while (1) {
-    receiveOutput();
-    if ((output == 8888) || (output == 9999))
-      break;
-    Serial.println("checking for feedback type");
-  }
-
-  if (output == 8888) {
-    isOutputVib = true;
-    Serial.println("Output is vibration");
-  }
-  else {
-    isOutputVib = false;
-    Serial.println("Output is servo");
-  }
-  changeFeedback = false;
-  output = 0;
 }
 
 void loop(void)
 {
   receiveOutput();
 }
+
+/* Function: receiveOutput
+   "Inputs": Data coming from transmitting microcontroller
+   "Outputs": servo position or vibration.
+   Purpose: Receives data to be outputted from transmitting microcontroller and outputs either
+   servo position or vibration depending on specification spent from transmitting microcontroller.
+   Constantly checks to see if output should be changed from vibration to servo or vice versa.
+*/
 
 void receiveOutput() {
   // if there is data ready
@@ -155,15 +131,11 @@ void receiveOutput() {
       // Delay just a little bit to let the other unit
       // make the transition to receiver
 
-//      checkOutput(); // check if need to switch feedback type from vib->servo or vice versa
-
       if (!checkOutput()) {
         sendOutput();
       }
-
-
-      //      delay(20);
     }
+
     // First, stop listening so we can talk
     radio.stopListening();
 
@@ -176,6 +148,11 @@ void receiveOutput() {
     radio.startListening();
   }
 }
+
+/* Function: sendOutput
+ *  "Inputs": output (either pwm or arm position)
+ *  Purpose: Outputs pwm onto vibration motor or arm position onto servo depending on output type
+ */
 
 void sendOutput() {
   if (isOutputVib == true) {
@@ -202,11 +179,16 @@ void sendOutput() {
   }
 }
 
+/* Function: checkOutput
+ * "Inputs": output
+ * Output: returns 1 if output type has been changed, 0 otherwise
+ * Purpose: determines if output contains OUTPUT_VIB (signals output should be set to vibration) or OUTPUT_SERVO (output set to servo)
+ */
 
 int checkOutput() {
 
-  if (output == 8888 || output == 9999) {
-    if (output == 8888) {
+  if (output == OUTPUT_VIB || output == OUTPUT_SERVO) {
+    if (output == OUTPUT_VIB) {
       isOutputVib = true;
       Serial.println("Output is vibration");
       return 1;
@@ -216,9 +198,8 @@ int checkOutput() {
       Serial.println("Output is servo");
       return 1;
     }
-    changeFeedback = false;
   }
-  else 
+  else
     return 0;
 }
-  // vim:cin:ai:sts=2 sw=2 ft=cpp
+// vim:cin:ai:sts=2 sw=2 ft=cpp

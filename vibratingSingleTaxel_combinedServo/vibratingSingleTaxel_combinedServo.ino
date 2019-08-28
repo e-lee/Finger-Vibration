@@ -1,30 +1,28 @@
 /*******************************
    The following MUST be true for this code to work:
-
-   1. if using Piksey Pico board, you are using Arduino 1.8.7 (NOT the most recent version!)
-
-   2. in "TimerOne.h" that TCNT1 = 1 (not TCNT1 = 0) in the TimerOne library files
+   
+   1. in "TimerOne.h" that TCNT1 = 1 (not TCNT1 = 0) in the TimerOne library files
       otherwise, interrupt will trigger immediately after it is enabled/started
 
-   3. if using Piksey Pico board, add "|| defined (__AVR_ATmega328PB__)" to line 94 in "known_16bit_timers.h" in the TimerOne library files
+   2. if using Piksey Pico board, add "|| defined (__AVR_ATmega328PB__)" to line 94 in "known_16bit_timers.h" in the TimerOne library files
       otherwise, the TimerOne library will not be able to recognize the board
 
+ Other Important Notes:
+ 
+   ** if using the Piksey Pico board and there is some error in the debugging window when you try to upload saying "...Permission Denied",
+   try switching "Arduino AVR Boards" (under Tools->Board->Boards Manager) to version 1.6.22 
+
+   **the TimerOne and Servo Libraries both use the built-in harware timer called timer1. This means that in this version of the code, trying to activate 
+   vibrational output (the fadeaway function uses timer1) and the servo at the same time may yield unexpected results
+
+   **The inclusion of the <Servo.h> library (used to control the servo) or the usage of the <TimerOne.h> library (both are used in this code)
+   means that the pins 9, 10 are unavailable for use.  
+
  *******************************/
-/*
-   - add something that recalibrates after high pressures ?
-
-   - do some kind of hard pressure test to see how much the displacement (capacitance) changes at rest to help with recalibration
-   - smoothing funct so timer doesn't start/stop constantly on the borderline of a new pwm segment
-
-*/
-
-/********************** The digital pins originally used for RF communication (9, 10) can't be used if the servo library is included.  Also, the Timerone library and Servo libraries
-   both use timer1 -- so they cannot be used in the same code together (there are alternative servo libraries, but for now, I'm not going to download a
-   third-party library).  In this version of the code, all of the vibration stuff has been taken out.
 
   /* Author: Emily Lee
    Date: August 2019
-   Purpose: Reads capacitance from AD7746 CDC and calculates a corresponding pwm (to be outputted to a vibration motor). Optionally, this pwm can be
+   Purpose: Reads capacitance from AD7746 CDC and calculates a corresponding pwm (to be outputted to a vibration motor) or servo position. Optionally, this pwm can be
    transmitted to another microcontroller using nrF24l01+ modules. These features, as well as touch sensitivity, can be controlled with user-defined variables.
    Email: emilylee.email@gmail.com
 */
@@ -40,7 +38,7 @@
 /********** USER DEFINED CONSTANTS ************/
 const bool isTransmitter = true; // set as true if want to act as transmitter, false if want to output vibration on vibpin (pin 11)
 const bool isPwmLinear = false; // set as true if want pwm to change linearly with changes in capacitance, false if want pwm to remain within 4 discrete values
-const bool isOutputVib = false; // set as true if want output to be pwm into vibration motor, false if want output to be servo angle
+const bool isOutputVib = true; // set as true if want output to be pwm into vibration motor, false if want output to be servo angle
 
 /* linear pwm constants */
 #define PWM_HIGH 255 // the highest pwm outputted
@@ -56,10 +54,6 @@ const bool isOutputVib = false; // set as true if want output to be pwm into vib
 /**********************************************/
 
 /* arm positions */
-//#define POS_0 0
-//#define POS_1 1
-//#define POS_2 2
-//#define POS_3 3
 typedef enum {no_touch = 0, light_touch = 1, med_touch = 2, hard_touch = 3} armPos;
 
 /* define timer flags */
@@ -73,6 +67,10 @@ typedef enum {not_started, started, finished} timer_flags;
 #define REGISTER_EXC_SETUP 0x09
 #define REGISTER_CONFIGURATION 0x0A
 #define RESET_ADDRESS 0xBF
+
+/* constants defining output change*/
+#define OUTPUT_VIB 8888
+#define OUTPUT_SERVO 9999
 
 /* constant for calculating baseline */
 #define NUM_READINGS 100 // the number of readings averaged when calculating the baseline (increasing this number also increases calibration time)
@@ -162,10 +160,11 @@ void setup()
     radio.openReadingPipe(1, pipes[1]);
     radio.startListening();
 
+    // ** constantly tell receiving microcontroller if output is vibration or servo until acknowledged
     if (isOutputVib == true)
-      while (!sendOutput(8888)); // send unique number to signal output is vibration
+      while (!sendOutput(OUTPUT_VIB)); // send unique number to signal output is vibration
     else
-      while (!sendOutput(9999)); // otherwise send other unique number is servo
+      while (!sendOutput(OUTPUT_SERVO)); // otherwise send other unique number is servo
   }
 
   capacitance = baseline;   // initialize capacitance (so old_capacitance has a proper value in the first run of loop())
