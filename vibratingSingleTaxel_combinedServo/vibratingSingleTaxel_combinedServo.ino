@@ -40,7 +40,7 @@
 /********** USER DEFINED CONSTANTS ************/
 const bool isTransmitter = true; // set as true if want to act as transmitter, false if want to output vibration on vibpin (pin 11)
 const bool isPwmLinear = false; // set as true if want pwm to change linearly with changes in capacitance, false if want pwm to remain within 4 discrete values
-const bool isOutputVib = true; // set as true if want output to be pwm into vibration motor, false if want output to be servo angle
+const bool isOutputVib = false; // set as true if want output to be pwm into vibration motor, false if want output to be servo angle
 
 /* linear pwm constants */
 #define PWM_HIGH 255 // the highest pwm outputted
@@ -183,7 +183,6 @@ void setup()
 /* ______MAIN PROGRAM______ */
 void loop()
 {
-  delay(300);
   old_capacitance = capacitance; // save the old capacitance
   readCapacitance(); // new capacitance is stored in global variable capacitance
   findpwm(); // find new pwm according to new capacitance
