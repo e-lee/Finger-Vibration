@@ -17,6 +17,8 @@
 #define OUTPUT_VIB 8888
 #define OUTPUT_SERVO 9999
 
+#define POS_HIGH 24
+
 bool isOutputVib = true; // output is servo by default
 int output;
 //
@@ -25,7 +27,7 @@ int output;
 
 // Set up nRF24L01 radio on SPI bus plus pins 5 & 6
 
-RF24 radio(5, 6); //CE is 5, CSN is 6
+RF24 radio(6, 7); //CE is 5, CSN is 6
 
 //
 // Topology
@@ -70,7 +72,6 @@ void setup(void)
   Serial.begin(9600);
   printf_begin();
   printf("\n\rRF24/examples/GettingStarted/\n\r");
-//  printf("ROLE: %s\n\r", role_friendly_name[role]);
   printf("*** PRESS 'T' to begin transmitting to the other node\n\r");
 
   //
@@ -78,6 +79,7 @@ void setup(void)
   //
 
   radio.begin();
+  radio.setPALevel(RF24_PA_LOW);
   radio.setAutoAck(false);
 
   // optionally, increase the delay between retries & # of retries
@@ -98,6 +100,10 @@ void setup(void)
   //
 
   radio.printDetails();
+
+  // attach servo, initialize position
+  armServo.attach(servoSignal);
+  armServo.write(0);
 }
 
 void loop(void)
@@ -163,6 +169,12 @@ void sendOutput() {
     delay(25); // a delay is needed here, otherwise the servo will not respond to commands
     Serial.print("arm position is: ");
     Serial.println(output);
+
+     if (output > POS_HIGH) {
+        analogWrite(vibpin1, 255);
+      }
+      else 
+        analogWrite(vibpin1, 0);
   }
 }
 

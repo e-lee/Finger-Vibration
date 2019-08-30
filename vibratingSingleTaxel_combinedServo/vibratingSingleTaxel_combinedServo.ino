@@ -26,7 +26,7 @@
 
    ** All the radio code is based off of an rf24 example called "GettingStarted". if you have the rf24 library installed, you can access this file  
    * under File -> Examples -> RF24 -> GettingStarted.
-   *
+   
 
  *******************************/
 
@@ -46,7 +46,7 @@
 #include <Servo.h>
 
 /********** USER DEFINED CONSTANTS ************/
-const bool isTransmitter = true; // set as true if want to act as transmitter, false if want to output vibration on vibpin (pin 11)
+const bool isTransmitter = false; // set as true if want to act as transmitter, false if want to output vibration on vibpin (pin 11)
 const bool isOutputLinear = true; // set as true if want output to change linearly with changes in capacitance, false if want output to remain within 4 discrete values
 const bool isOutputVib = false; // set as true if want output to be pwm into vibration motor, false if want output to be servo angle
 
@@ -96,7 +96,7 @@ typedef enum {not_started, started, finished} timer_flags;
 /* pin names */
 const int vibpin1 = 11; // the pin at which the calculated pwm is outputted
 const int cdcPower = 3;
-const int servoSignal = 9;
+const int servoSignal = 3;
 
 /* global variables */
 float baseline = 0;
@@ -174,6 +174,7 @@ void setup()
   //** Set up RF transmission
   if (isTransmitter == true) {
     radio.begin();
+    radio.setPALevel(RF24_PA_LOW);
     radio.setAutoAck(false);
     radio.setRetries(15, 15);
     radio.openWritingPipe(pipes[0]); // open pipes for transmission
@@ -206,7 +207,6 @@ void loop()
   old_capacitance = capacitance; // save the old capacitance
   readCapacitance(); // new capacitance is stored in global variable capacitance
     findpwm(); // find new pwm according to new capacitance
-  //  Serial.println(pwm);
   if (isOutputVib == true) {
     fadeawayTimer(); // check if need to fade (if using vibration output)
     sendOutput(pwm); // check if supposed to act as transmitter, then send pwm accordingly
@@ -229,6 +229,7 @@ int sendOutput(int outputSignal)
   if (isTransmitter == false) {
     if (isOutputVib == true) {
       analogWrite(vibpin1, outputSignal); //  if we don't need to transmit pwm, write pwm to vibpin
+      Serial.println(pwm);
     }
     else {
       /* write servo position output*/
@@ -236,6 +237,14 @@ int sendOutput(int outputSignal)
       delay(25); // a delay is needed here, otherwise the servo will not respond to commands
       Serial.print("arm position is: ");
       Serial.println(outputSignal);
+
+      /* vibrate if servo at max rotation */
+      if (outputSignal == POS_HIGH) {
+        analogWrite(vibpin1, 255);
+      }
+      else 
+        analogWrite(vibpin1, 0);
+        
     }
     return 1; // assume non transmitter codes submit successfully
   }
@@ -243,8 +252,8 @@ int sendOutput(int outputSignal)
     bool ok;
     // transmit pwm to other microcontroller
     radio.stopListening(); // Stop listening for a response so we can send a message
-
     // type of variable sent must match type of variable read (i.e. if "output" is type int on the transmitter, it should also be int on the receiver)
+
     ok = radio.write( &outputSignal, sizeof(int) );
     if (ok) {
       printf("ok...Sent ");
@@ -457,7 +466,7 @@ void linearFadeTimer()
     }
     else if (timerStatus == started) { // if the timer has been started and we are out of stationary range
       if (abs(capacitance - first_touch) > CAP_STATIONARY) {
-        Serial.print("timer stopped, out of constant range");
+        Serial.println("timer stopped, out of constant range");
         Timer1.stop(); // stop counting
         timerStatus = not_started; // reset timer flag - internal timer count is reset when time is started again
       }
