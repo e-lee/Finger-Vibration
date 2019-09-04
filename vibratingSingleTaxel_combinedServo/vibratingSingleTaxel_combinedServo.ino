@@ -44,6 +44,8 @@
 #include "printf.h"
 #include <TimerOne.h>
 #include <Servo.h>
+#include <Adafruit_SleepyDog.h>
+
 
 /********** USER DEFINED CONSTANTS ************/
 const bool isTransmitter = false; // set as true if want to act as transmitter, false if want to output vibration on vibpin (pin 11)
@@ -204,6 +206,11 @@ void setup()
 /* ______MAIN PROGRAM______ */
 void loop()
 {
+  Watchdog.sleep(50); //fully go to sleep for 50 milliseconds to save battery
+  #ifdef USBCON
+    USBDevice.attach();
+  #endif
+ 
   old_capacitance = capacitance; // save the old capacitance
   readCapacitance(); // new capacitance is stored in global variable capacitance
     findpwm(); // find new pwm according to new capacitance
