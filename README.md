@@ -20,7 +20,7 @@ the following codes listed represent previous iterations of vibratingSingleTaxel
 of the code to select the desired mapping).  Has fadeaway funciton, but it is not the latest version
 
 **vibratingSingleTaxel_combined:** Capacitance is mapped linearly/segmented into a pwm (but you must comment out the appropriate parts 
-of the code to select the desired mapping), and has the option to transmit this code to another microcontroller (i.e. vibratingSingleTaxel*combined* with the transmitter code). Has fadeaway funciton, but it is not the latest version
+of the code to select the desired mapping), and has the option to transmit this code to another microcontroller (i.e. vibratingSingleTaxel *combined* with the transmitter code). Has fadeaway funciton, but it is not the latest version
 
 **vibratingSingleTaxel_combined_receiver:** Wirelessly receives vibration data and outputs it on an analog pin.  Pairs with 
 vibratingSingleTaxel_combined.  
