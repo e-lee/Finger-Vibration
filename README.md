@@ -10,7 +10,7 @@ also optionally acts as a transmitter/receiver.
 **vibratingSingleTaxel_combined_receiverServo:** Wirelessly receives vibration/servo data and outputs it on an analog pin.  Pairs with
 vibratingSingleTaxel_combinedServo.
 
-# Previous iterations of vibratingSingleTaxel_transmitterServo
+## Previous iterations of vibratingSingleTaxel_transmitterServo
 
 the following codes listed represent previous iterations of vibratingSingleTaxel_combinedServo:
 
